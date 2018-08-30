@@ -1,0 +1,190 @@
+
+from __future__ import absolute_import, division, print_function
+from collections import namedtuple
+
+import numpy as np
+import tensorflow as tf
+import tensorflow.contrib.slim as slim
+from keras.layers import Lambda
+from keras.layers import Conv2D, Conv2DTranspose, MaxPooling2D, concatenate, Cropping2D, Dense, Flatten, Input, Reshape, LSTM, TimeDistributed
+from keras.models import Model
+
+
+deepslam_parameters = namedtuple('parameters',
+                        'height, width, '
+                        'batch_size, '
+                        'num_threads, '
+                        'num_epochs, '
+                        'full_summary')
+
+class DeepslamModel(object):
+    """deepslam model"""
+
+    def __init__(self, params, mode, img_cur, img_next, poses, reuse_variables=None, model_index=0):
+
+        self.params = params
+        self.mode = mode
+        self.img_cur = img_cur
+        self.img_next = img_next
+        self.poses = poses
+        self.model_collection = ['model_' + str(model_index)]
+        self.reuse_variables = reuse_variables
+
+        self.build_pose_architecture()
+        self.build_slam_architecture()
+
+        [self.tran_est, self.rot_est, self.unc_est] = self.build_model(self.img_cur, self.img_next)
+
+        if self.mode == 'test':
+            return
+
+        self.build_losses()
+        self.build_summaries()     
+
+    def get_variance(self, x):
+        variance = self.conv(x, 3, 3, 1, activation='softplus')
+        variance = Lambda(lambda x: 0.01 + x)(variance)
+        return variance
+
+    @staticmethod
+    def conv(input, channels, kernel_size, strides, activation='elu'):
+
+        return Conv2D(channels, kernel_size=kernel_size, strides=strides, padding='same', activation=activation)(input)
+
+    @staticmethod
+    def deconv(input, channels, kernel_size, scale):
+
+        output =  Conv2DTranspose(channels, kernel_size=kernel_size, strides=scale, padding='same')(input)
+        output_shape = output._keras_shape
+        output.set_shape(output_shape)
+        return output
+    @staticmethod
+    def maxpool(input, kernel_size):
+        
+        return MaxPooling2D(pool_size=kernel_size, strides=2, padding='same', data_format=None)(input)
+
+    def build_pose_architecture(self):
+        
+        with tf.variable_scope('pose_model',reuse=self.reuse_variables):
+            input1 = Input(batch_shape=self.img_cur.get_shape().as_list())
+
+            input2 = Input(batch_shape=self.img_cur.get_shape().as_list())
+
+            input = concatenate([input1,input2], axis=3)
+
+            conv1 = self.conv(input, 16, 7, 2, activation='relu')
+
+            conv2 = self.conv(conv1, 32, 5, 2, activation='relu')
+
+            conv3 = self.conv(conv2, 64, 3, 2, activation='relu')
+
+            conv4 = self.conv(conv3, 128, 3, 2, activation='relu')
+
+            conv5 = self.conv(conv4, 256, 3, 2, activation='relu')
+
+            conv6 = self.conv(conv5, 256, 3, 2, activation='relu')
+
+            conv7 = self.conv(conv6, 512, 3, 2, activation='relu')
+
+            dim = np.prod(conv7.shape[1:])
+
+            flat1 = Lambda(lambda x: tf.reshape(x, [-1, dim]))(conv7)
+
+            # translation
+            fc1_tran = Dense(512, input_shape=(dim,))(flat1)
+
+            fc2_tran = Dense(512, input_shape=(512,))(fc1_tran)
+
+            fc3_tran = Dense(3, input_shape=(512,))(fc2_tran)
+
+            # rotation
+            fc1_rot = Dense(512, input_shape=(dim,))(flat1)
+
+            fc2_rot = Dense(512, input_shape=(512,))(fc1_rot)
+
+            fc3_rot = Dense(3, input_shape=(512,))(fc2_rot)
+
+            # pose uncertainty
+            fc1_unc = Dense(512, input_shape=(dim,))(flat1)
+
+            fc2_unc = Dense(512, input_shape=(512,))(fc1_unc)
+
+            fc3_unc = Dense(21, input_shape=(512,))(fc2_unc)#, activation = 'softplus'
+
+            self.pose_model = Model([input1,input2], [fc3_tran, fc3_rot, fc3_unc])
+
+    def build_slam_architecture(self):
+        
+        with tf.variable_scope('slam_model',reuse=self.reuse_variables):
+            input1 = Input(batch_shape=(1,self.params.batch_size,3))
+
+            input2 = Input(batch_shape=(1,self.params.batch_size,3))
+
+            input3 = Input(batch_shape=(1,self.params.batch_size,21))
+
+            input = concatenate([input1,input2,input3], axis=2)
+        
+            lstm_1 = LSTM(128, batch_input_shape = (1,self.params.batch_size,27), stateful=True, return_sequences=True)(input)
+    
+            lstm_2 = LSTM(128, stateful=True, return_sequences=True)(lstm_1)
+
+            fc1_tran = TimeDistributed(Dense(3, input_shape=(128,)))(lstm_2)
+
+            fc1_rot = TimeDistributed(Dense(3, input_shape=(128,)))(lstm_2)
+
+            fc1_unc = TimeDistributed(Dense(21, input_shape=(128,)))(lstm_2)
+
+            self.slam_model = Model([input1,input2,input3], [fc1_tran, fc1_rot, fc1_unc])
+
+
+
+    def build_model(self,img1,img2):
+        with slim.arg_scope([slim.conv2d, slim.conv2d_transpose], activation_fn=tf.nn.elu):
+
+            [trans, rot, unc] = self.pose_model([img1,img2])
+
+            trans = tf.expand_dims(trans,2)
+            rot = tf.expand_dims(rot,2)
+            unc = tf.expand_dims(unc,2)
+            trans = tf.transpose(trans,perm=[2, 0, 1]) 
+            rot = tf.transpose(rot,perm=[2, 0, 1]) 
+            unc = tf.transpose(unc,perm=[2, 0, 1])
+
+            [trans_est, rot_est, unc_est] = self.slam_model([trans,rot,unc])
+
+            trans_est.set_shape(trans_est._keras_shape)
+            rot_est.set_shape(rot_est._keras_shape)
+            unc_est.set_shape(unc_est._keras_shape)
+
+            trans_est = tf.reshape(trans_est, [-1, 3])
+            rot_est = tf.reshape(rot_est, [-1, 3])
+            unc_est = tf.reshape(unc_est, [-1, 21])
+
+        return trans_est, rot_est, unc_est
+
+
+    def build_losses(self):
+        with tf.variable_scope('losses', reuse=self.reuse_variables):
+            
+            L = tf.contrib.distributions.fill_triangular(self.unc_est)
+            Lt = tf.transpose(L,perm=[0, 2, 1])
+            self.Q = tf.matmul(L,Lt)
+
+            poses_est = concatenate([self.rot_est, self.tran_est],axis=1)
+            dist = poses_est-self.poses
+            dist = tf.expand_dims(dist,2)
+            dist_t = tf.transpose(dist,perm=[0,2,1])
+            mdist = tf.matmul(tf.matmul(dist_t,self.Q),dist)
+
+            # TOTAL LOSS
+            self.total_loss = tf.reduce_mean(mdist)
+
+    def build_summaries(self):
+        # SUMMARIES
+        with tf.device('/cpu:0'):
+            tf.summary.image('img_cur', self.img_cur,  max_outputs=3, collections=self.model_collection)
+            tf.summary.image('img_next',  self.img_next,   max_outputs=3, collections=self.model_collection)
+
+            txtPredictions = tf.Print(tf.as_string(self.Q),[tf.as_string(self.Q)], message='predictions', name='txtPredictions')
+            tf.summary.text('predictions', txtPredictions, collections=self.model_collection)
+
