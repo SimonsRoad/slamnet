@@ -60,7 +60,7 @@ class deepslam:
         params = deepslam_parameters(
             height=args.input_height,
             width=args.input_width,
-            batch_size=2,
+            batch_size=1,
             num_threads=1,
             num_epochs=1,
             full_summary=False)
@@ -123,13 +123,6 @@ class deepslam:
         """Test function."""
         [tran, rot] = self.sess.run([self.model.tran_est, self.model.rot_est], feed_dict={self.img_cur: self.img_left, self.img_next: self.img_left_next})
 
-        #Publish Depth Image
-        disp = disp.squeeze()
-#        print(np.amin(disp))    
-        disp_to_img = scipy.misc.imresize(disp.squeeze(), [args.input_height, args.input_width])
-        cv2.imshow("disp_to_img", disp_to_img)
-        cv2.waitKey(3)
-        self.image_pub.publish(self.bridge.cv2_to_imgmsg(disp, "32FC1"))
 
         #Publish R and t
         tran = tran.squeeze()
