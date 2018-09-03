@@ -30,6 +30,7 @@ class DeepslamModel(object):
         self.model_collection = ['model_' + str(model_index)]
         self.reuse_variables = reuse_variables
 
+        self.build_depth_architecture()
         self.build_pose_architecture()
         self.build_slam_architecture()
 
@@ -45,6 +46,11 @@ class DeepslamModel(object):
         variance = self.conv(x, 3, 3, 1, activation='softplus')
         variance = Lambda(lambda x: 0.01 + x)(variance)
         return variance
+
+    def get_depth(self, x):
+        depth = self.conv(x, 1, 3, 1, activation='sigmoid')
+        depth = Lambda(lambda x: 80.0 * x)(depth)
+        return depth
 
     @staticmethod
     def conv(input, channels, kernel_size, strides, activation='elu'):
@@ -62,6 +68,117 @@ class DeepslamModel(object):
     def maxpool(input, kernel_size):
         
         return MaxPooling2D(pool_size=kernel_size, strides=2, padding='same', data_format=None)(input)
+
+    def conv_block(self, input, channels, kernel_size):
+        conv1 = self.conv(input, channels, kernel_size, 1)
+
+        conv2 = self.conv(conv1, channels, kernel_size, 2)
+
+        return conv2
+
+    def deconv_block(self, input, channels, kernel_size, skip):
+
+        deconv1 = self.deconv(input, channels, kernel_size, 2)
+        if skip is not None:
+            s = skip.shape
+
+            if  s[1] % 2 != 0:
+                deconv1 = Lambda(lambda x: x[:,:-1,:,:])(deconv1)
+            if  s[2] % 2 != 0:
+                deconv1 = Lambda(lambda x: x[:,:,:-1,:])(deconv1)
+
+            concat1 = concatenate([deconv1, skip], 3)
+        else:
+            concat1 = deconv1
+
+        iconv1 = self.conv(concat1, channels, kernel_size, 1)
+        return iconv1
+
+    def build_depth_architecture(self):
+
+        with tf.variable_scope('depth_model',reuse=self.reuse_variables):
+
+            input = Input(batch_shape=self.img_cur.get_shape().as_list())
+
+            # encoder
+            conv1 = self.conv_block(input, 32, 7)
+
+            conv2 = self.conv_block(conv1, 64, 5)
+
+            conv3 = self.conv_block(conv2, 128, 3)
+
+
+            conv4 = self.conv_block(conv3, 256, 3)
+
+            conv5 = self.conv_block(conv4, 512, 3)
+
+            conv6 = self.conv_block(conv5, 512, 3)
+
+            conv7 = self.conv_block(conv6, 512, 3)
+
+            skip1 = conv1
+
+            skip2 = conv2
+        
+            skip3 = conv3
+
+            skip4 = conv4
+
+            skip5 = conv5
+
+            skip6 = conv6
+
+
+            # decoder1
+            deconv7 = self.deconv_block(conv7, 512, 3, skip6)
+
+            deconv6 = self.deconv_block(deconv7, 512, 3, skip5)
+
+            deconv5 = self.deconv_block(deconv6, 256, 3, skip4)
+            
+            deconv4 = self.deconv_block(deconv5, 128, 3, skip3)
+            disp4 = self.get_depth(deconv4)
+
+            deconv3 = self.deconv_block(deconv4, 64, 3, skip2)
+            disp3 = self.get_depth(deconv3)
+
+            deconv2 = self.deconv_block(deconv3, 32, 3, skip1)
+            disp2 = self.get_depth(deconv2)
+
+            deconv1 = self.deconv_block(deconv2, 16, 3, None)
+
+            s = self.img_cur.shape
+            if  s[1] % 2 != 0:
+                deconv1 = Lambda(lambda x: x[:,:-1,:,:])(deconv1)
+            if  s[2] % 2 != 0:
+                deconv1 = Lambda(lambda x: x[:,:,:-1,:])(deconv1)
+
+            disp1 = self.get_depth(deconv1)
+
+            # decoder2
+
+            deconv4_2 = self.deconv_block(deconv5, 128, 3, skip3)
+            disp4_2 = self.get_variance(deconv4_2)
+
+            deconv3_2 = self.deconv_block(deconv4_2, 64, 3, skip2)
+            disp3_2 = self.get_variance(deconv3_2)
+
+            deconv2_2 = self.deconv_block(deconv3_2, 32, 3, skip1)
+            disp2_2 = self.get_variance(deconv2_2)
+
+            deconv1_2 = self.deconv_block(deconv2_2, 16, 3, None)
+
+            s = self.img_cur.shape
+            if  s[1] % 2 != 0:
+                deconv1_2 = Lambda(lambda x: x[:,:-1,:,:])(deconv1_2)
+            if  s[2] % 2 != 0:
+                deconv1_2 = Lambda(lambda x: x[:,:,:-1,:])(deconv1_2)
+
+            disp1_2 = self.get_variance(deconv1_2)
+
+            disp_est  = [disp1, disp2, disp3, disp4, disp1_2, disp2_2, disp3_2, disp4_2]
+
+            self.depth_model = Model(input, disp_est)
 
     def build_pose_architecture(self):
         
