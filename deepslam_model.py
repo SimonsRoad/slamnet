@@ -291,7 +291,9 @@ class DeepslamModel(object):
             dist = poses_est-self.poses
             dist = tf.expand_dims(dist,2)
             dist_t = tf.transpose(dist,perm=[0,2,1])
-            mdist = tf.matmul(tf.matmul(dist_t,self.Q),dist)
+            res_Q_norm = tf.norm(self.Q,axis=[1,2])
+            res_Q_norm = Lambda(lambda x: 1.0 + x)(res_Q_norm)
+            mdist = tf.matmul(tf.matmul(dist_t,tf.matrix_inverse(self.Q)),dist) + tf.log(res_Q_norm) 
 
             # TOTAL LOSS
             self.total_loss = tf.reduce_mean(mdist)
