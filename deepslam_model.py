@@ -9,6 +9,7 @@ from keras.layers import Lambda
 from keras.layers import Conv2D, Conv2DTranspose, MaxPooling2D, concatenate, Cropping2D, Dense, Flatten, Input, Reshape, LSTM, TimeDistributed
 from keras.models import Model
 
+from transformers import *
 
 deepslam_parameters = namedtuple('parameters',
                         'height, width, '
@@ -241,17 +242,23 @@ class DeepslamModel(object):
 
             input = concatenate([input1,input2,input3], axis=2)
         
-            lstm_1 = LSTM(128, batch_input_shape = (1,self.params.batch_size,27), stateful=True, return_sequences=True)(input)
+            lstm_1 = LSTM(128, batch_input_shape = (1,self.params.batch_size,27), stateful=True,  return_sequences=True)(input) #stateful=True, 
     
-            lstm_2 = LSTM(128, stateful=True, return_sequences=True)(lstm_1)
+            lstm_2 = LSTM(256, stateful=True, return_sequences=True)(lstm_1)
 
-            fc1_tran = TimeDistributed(Dense(3, input_shape=(128,)))(lstm_2)
+            lstm_3 = LSTM(512, stateful=True, return_sequences=True)(lstm_2)
 
-            fc1_rot = TimeDistributed(Dense(3, input_shape=(128,)))(lstm_2)
+            fc1 = TimeDistributed(Dense(256, input_shape=(512,)))(lstm_3)
 
-            fc1_unc = TimeDistributed(Dense(21, input_shape=(128,)))(lstm_2)
+            fc2 = TimeDistributed(Dense(128, input_shape=(256,)))(fc1)
 
-            self.slam_model = Model([input1,input2,input3], [fc1_tran, fc1_rot, fc1_unc])
+            fc3_tran = TimeDistributed(Dense(3, input_shape=(128,)))(fc2)
+
+            fc3_rot = TimeDistributed(Dense(3, input_shape=(128,)))(fc2)
+
+            fc3_unc = TimeDistributed(Dense(21, input_shape=(128,)))(fc2)
+
+            self.slam_model = Model([input1,input2,input3], [fc3_tran, fc3_rot, fc3_unc])
 
 
 
@@ -280,20 +287,39 @@ class DeepslamModel(object):
         return trans_est, rot_est, unc_est
 
 
+
     def build_losses(self):
         with tf.variable_scope('losses', reuse=self.reuse_variables):
             
+            # Generate Q
             L = tf.contrib.distributions.fill_triangular(self.unc_est)
             Lt = tf.transpose(L,perm=[0, 2, 1])
             self.Q = tf.matmul(L,Lt)
 
+
+#            # Generate poses
+#            M_pre = compose_matrix(self.poses[:,:3],self.poses[:,3:])
+#            M_03 = M_pre[:1,:,:]
+#            M_23 = compose_matrix(self.rot_est[:1,:], self.tran_est[:1,:])
+#            M_02 = tf.matmul(M_03,tf.matrix_inverse(M_23))
+#            M_trans = tf.tile(M_02,[self.params.batch_size,1,1])
+#            M = tf.matmul(tf.matrix_inverse(M_trans),M_pre)
+#            r,t = decompose_matrix(M)
+#            poses_gt = concatenate([r,t],axis=1)
+            poses_gt = self.poses
+
+            # Compute dists
             poses_est = concatenate([self.rot_est, self.tran_est],axis=1)
-            dist = poses_est-self.poses
+            dist = poses_est-poses_gt
             dist = tf.expand_dims(dist,2)
             dist_t = tf.transpose(dist,perm=[0,2,1])
+
+            # Compute mdist
             res_Q_norm = tf.norm(self.Q,axis=[1,2])
             res_Q_norm = Lambda(lambda x: 1.0 + x)(res_Q_norm)
-            mdist = tf.matmul(tf.matmul(dist_t,tf.matrix_inverse(self.Q)),dist) + tf.log(res_Q_norm) 
+            self.dist_sum = tf.reduce_mean(tf.matmul(dist_t,dist))
+            mdist = tf.matmul(tf.matmul(dist_t,tf.matrix_inverse(self.Q)),dist) + tf.log(res_Q_norm)
+#            mdist = tf.matmul(dist_t,dist) + tf.log(res_Q_norm) 
 
             # TOTAL LOSS
             self.total_loss = tf.reduce_mean(mdist)
@@ -301,6 +327,7 @@ class DeepslamModel(object):
     def build_summaries(self):
         # SUMMARIES
         with tf.device('/cpu:0'):
+            tf.summary.scalar('mean_dist', self.dist_sum, collections=self.model_collection)
             tf.summary.image('img_cur', self.img_cur,  max_outputs=3, collections=self.model_collection)
             tf.summary.image('img_next',  self.img_next,   max_outputs=3, collections=self.model_collection)
 

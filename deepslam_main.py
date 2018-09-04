@@ -71,11 +71,12 @@ def train(params):
 
         # OPTIMIZER
         num_training_samples, seq_nums = count_text_lines(args.filenames_file)
-
+        
         steps_per_epoch = np.ceil(num_training_samples / params.batch_size).astype(np.int32)
-        seq_nums = np.reshape(seq_nums, (int(params.batch_size),steps_per_epoch))
-        seq_per_epoch = seq_nums[0,:]
-        print( steps_per_epoch )
+        seq_nums = np.reshape(seq_nums, (steps_per_epoch,int(params.batch_size)))
+        seq_per_epoch = seq_nums[:,0]
+#        print(seq_per_epoch)
+
         num_total_steps = params.num_epochs * steps_per_epoch
         start_learning_rate = args.learning_rate
 
@@ -168,10 +169,14 @@ def train(params):
         start_time = time.time()
         for step in range(start_step, num_total_steps):
             before_op_time = time.time()
-            if step>1:
-                idx = step % steps_per_epoch
-                if seq_per_epoch[idx-2] != seq_per_epoch[idx-1]:
-                    self.slam_model.reset_states()
+            idx = step % steps_per_epoch
+            if idx ==0:
+                model.slam_model.reset_states()
+                print(step)
+            else:
+                if seq_per_epoch[idx-1] != seq_per_epoch[idx]:
+                    model.slam_model.reset_states()
+                    print(step)
             _, loss_value = sess.run([apply_gradient_op, total_loss])
             duration = time.time() - before_op_time
             if step and step % 100 == 0:
@@ -182,7 +187,7 @@ def train(params):
                 print(print_string.format(step, examples_per_sec, loss_value, time_sofar, training_time_left))
                 summary_str = sess.run(summary_op)
                 summary_writer.add_summary(summary_str, global_step=step)
-            if step and step % 10000 == 0:
+            if step and step % 1000 == 0:
                 train_saver.save(sess, args.log_directory + '/' + args.model_name + '/model', global_step=step)
 
         train_saver.save(sess, args.log_directory + '/' + args.model_name + '/model', global_step=num_total_steps)
