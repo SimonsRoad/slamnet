@@ -48,9 +48,6 @@ for dnum=1:numel(data_num)
         fprintf(save_fid, '%d ', dnum-1);
         fprintf(save_fid, 'sequences/%02d/image_2/%06d.png ', dnum-1, iter-1);
         fprintf(save_fid, 'sequences/%02d/image_2/%06d.png ', dnum-1, iter);
-        fprintf(save_fid, '%f %f %f ', left_focal_length(dnum), left_c0(dnum), left_c1(dnum));
-        fprintf(save_fid, '%f %f %f ', right_focal_length(dnum), right_c0(dnum), right_c1(dnum));
-        fprintf(save_fid, '%f %f %f ', base_line(dnum), image_dims(1,dnum), image_dims(2,dnum));
         fprintf(save_fid, '%f %f %f ', eul(1), eul(2), eul(3));
         fprintf(save_fid, '%f %f %f ', tran_mat(1,4), tran_mat(2,4), tran_mat(3,4));
         fprintf(save_fid, '\n');

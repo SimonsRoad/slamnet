@@ -22,14 +22,13 @@ parser = argparse.ArgumentParser(description='DeepSLAM TensorFlow implementation
 
 parser.add_argument('--mode',                      type=str,   help='train or test', default='train')
 parser.add_argument('--model_name',                type=str,   help='model name', default='deepslam')
-parser.add_argument('--dataset',                   type=str,   help='dataset to train on, kitti, or cityscapes', default='kitti')
 parser.add_argument('--data_path',                 type=str,   help='path to the data', required=True)
 parser.add_argument('--filenames_file',            type=str,   help='path to the filenames text file', required=True)
 
 parser.add_argument('--input_height',              type=int,   help='input height', default=256)
 parser.add_argument('--input_width',               type=int,   help='input width', default=512)
 
-parser.add_argument('--batch_size',                type=int,   help='batch size', default=100)
+parser.add_argument('--batch_size',                type=int,   help='batch size', default=1)
 parser.add_argument('--num_epochs',                type=int,   help='number of epochs', default=60)
 parser.add_argument('--learning_rate',             type=float, help='initial learning rate', default=1e-4)
 
@@ -89,10 +88,18 @@ def train(params):
         print("total number of samples: {}".format(num_training_samples))
         print("total number of steps: {}".format(num_total_steps))
 
-        dataloader = DeepslamDataloader(args.data_path, args.filenames_file, params, args.dataset, args.mode)
-        image  = dataloader.image_batch
-        next_image  = dataloader.next_image_batch
-        poses = dataloader.poses_batch
+        # Load dataset
+        dataloader = DeepslamDataloader(args.data_path, args.filenames_file, params, args.mode)
+#        image  = dataloader.image_batch
+#        next_image  = dataloader.next_image_batch
+#        poses = dataloader.poses_batch
+        dataset = dataloader.dataset
+        iterator = dataset.make_initializable_iterator()
+        image, next_image, poses = iterator.get_next()
+        init_op = iterator.initializer
+        image.set_shape( [params.batch_size, params.height, params.width, 3])
+        next_image.set_shape( [params.batch_size,params.height, params.width, 3])
+        poses.set_shape( [params.batch_size,6])   
 
         # split for each gpu
         image_splits  = tf.split(image,  args.num_gpus, 0)
@@ -146,10 +153,12 @@ def train(params):
         print("number of trainable parameters: {}".format(total_num_parameters))
 
         # INIT
+        sess.run(init_op)
         sess.run(tf.global_variables_initializer())
         sess.run(tf.local_variables_initializer())
         coordinator = tf.train.Coordinator()
-        threads = tf.train.start_queue_runners(sess=sess, coord=coordinator)
+#        threads = tf.train.start_queue_runners(sess=sess, coord=coordinator)
+
 
         # LOAD CHECKPOINT IF SET
         if args.vo_checkpoint_path != '':
@@ -172,12 +181,18 @@ def train(params):
             idx = step % steps_per_epoch
             if idx ==0:
                 model.slam_model.reset_states()
-                print(step)
+                sess.run(init_op)
             else:
                 if seq_per_epoch[idx-1] != seq_per_epoch[idx]:
                     model.slam_model.reset_states()
-                    print(step)
-            _, loss_value = sess.run([apply_gradient_op, total_loss])
+#            model.slam_model.reset_states()
+
+            if step % 100 == 0:
+                _, loss_value, summary_str = sess.run([apply_gradient_op, total_loss,summary_op])
+                summary_writer.add_summary(summary_str, global_step=step)
+            else:
+                _, loss_value = sess.run([apply_gradient_op, total_loss])
+
             duration = time.time() - before_op_time
             if step and step % 100 == 0:
                 examples_per_sec = params.batch_size / duration
@@ -185,8 +200,6 @@ def train(params):
                 training_time_left = (num_total_steps / step - 1.0) * time_sofar
                 print_string = 'batch {:>6} | examples/s: {:4.2f} | loss: {:.5f} | time elapsed: {:.2f}h | time left: {:.2f}h'
                 print(print_string.format(step, examples_per_sec, loss_value, time_sofar, training_time_left))
-                summary_str = sess.run(summary_op)
-                summary_writer.add_summary(summary_str, global_step=step)
             if step and step % 1000 == 0:
                 train_saver.save(sess, args.log_directory + '/' + args.model_name + '/model', global_step=step)
 
@@ -195,53 +208,53 @@ def train(params):
 def test(params):
     """Test function."""
 
-    dataloader = MonodepthDataloader(args.data_path, args.filenames_file, params, args.dataset, args.mode)
-    left  = dataloader.left_image_batch
-    right = dataloader.right_image_batch
+#    dataloader = MonodepthDataloader(args.data_path, args.filenames_file, params, args.dataset, args.mode)
+#    left  = dataloader.left_image_batch
+#    right = dataloader.right_image_batch
 
-    model = DeepslamModel(params, args.mode, left, right)
+#    model = DeepslamModel(params, args.mode, left, right)
 
-    # SESSION
-    config = tf.ConfigProto(allow_soft_placement=True)
-    sess = tf.Session(config=config)
+#    # SESSION
+#    config = tf.ConfigProto(allow_soft_placement=True)
+#    sess = tf.Session(config=config)
 
-    # SAVER
-    train_saver = tf.train.Saver()
+#    # SAVER
+#    train_saver = tf.train.Saver()
 
-    # INIT
-    sess.run(tf.global_variables_initializer())
-    sess.run(tf.local_variables_initializer())
-    coordinator = tf.train.Coordinator()
-    threads = tf.train.start_queue_runners(sess=sess, coord=coordinator)
+#    # INIT
+#    sess.run(tf.global_variables_initializer())
+#    sess.run(tf.local_variables_initializer())
+#    coordinator = tf.train.Coordinator()
+#    threads = tf.train.start_queue_runners(sess=sess, coord=coordinator)
 
-    # RESTORE
-    if args.checkpoint_path == '':
-        restore_path = tf.train.latest_checkpoint(args.log_directory + '/' + args.model_name)
-    else:
-        restore_path = args.checkpoint_path.split(".")[0]
-    train_saver.restore(sess, restore_path)
+#    # RESTORE
+#    if args.checkpoint_path == '':
+#        restore_path = tf.train.latest_checkpoint(args.log_directory + '/' + args.model_name)
+#    else:
+#        restore_path = args.checkpoint_path.split(".")[0]
+#    train_saver.restore(sess, restore_path)
 
-    num_test_samples = count_text_lines(args.filenames_file)
+#    num_test_samples = count_text_lines(args.filenames_file)
 
-    print('now testing {} files'.format(num_test_samples))
-    disparities    = np.zeros((num_test_samples, params.height, params.width), dtype=np.float32)
-    disparities_pp = np.zeros((num_test_samples, params.height, params.width), dtype=np.float32)
-    for step in range(num_test_samples):
-        disp = sess.run(model.disp_left_est[0])
-        disparities[step] = disp[0].squeeze()
-        disparities_pp[step] = post_process_disparity(disp.squeeze())
+#    print('now testing {} files'.format(num_test_samples))
+#    disparities    = np.zeros((num_test_samples, params.height, params.width), dtype=np.float32)
+#    disparities_pp = np.zeros((num_test_samples, params.height, params.width), dtype=np.float32)
+#    for step in range(num_test_samples):
+#        disp = sess.run(model.disp_left_est[0])
+#        disparities[step] = disp[0].squeeze()
+#        disparities_pp[step] = post_process_disparity(disp.squeeze())
 
-    print('done.')
+#    print('done.')
 
-    print('writing disparities.')
-    if args.output_directory == '':
-        output_directory = os.path.dirname(args.checkpoint_path)
-    else:
-        output_directory = args.output_directory
-    np.save(output_directory + '/disparities.npy',    disparities)
-    np.save(output_directory + '/disparities_pp.npy', disparities_pp)
+#    print('writing disparities.')
+#    if args.output_directory == '':
+#        output_directory = os.path.dirname(args.checkpoint_path)
+#    else:
+#        output_directory = args.output_directory
+#    np.save(output_directory + '/disparities.npy',    disparities)
+#    np.save(output_directory + '/disparities_pp.npy', disparities_pp)
 
-    print('done.')
+#    print('done.')
 
 def main(_):
 

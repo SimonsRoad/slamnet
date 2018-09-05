@@ -36,7 +36,6 @@ class DeepslamModel(object):
         self.build_slam_architecture()
 
         [self.tran_est, self.rot_est, self.unc_est] = self.build_model(self.img_cur, self.img_next)
-
         if self.mode == 'test':
             return
 
@@ -242,25 +241,34 @@ class DeepslamModel(object):
 
             input = concatenate([input1,input2,input3], axis=2)
         
-            lstm_1 = LSTM(128, batch_input_shape = (1,self.params.batch_size,27), stateful=True,  return_sequences=True)(input) #stateful=True, 
+            lstm_1 = LSTM(512, batch_input_shape = (1,self.params.batch_size,27), stateful=True, return_sequences=True)(input) #stateful=True, 
     
-            lstm_2 = LSTM(256, stateful=True, return_sequences=True)(lstm_1)
+            lstm_2 = LSTM(512, batch_input_shape = (1,self.params.batch_size,27), stateful=True, return_sequences=True)(lstm_1)
 
-            lstm_3 = LSTM(512, stateful=True, return_sequences=True)(lstm_2)
+            lstm_3 = LSTM(512, batch_input_shape = (1,self.params.batch_size,27), stateful=True, return_sequences=True)(lstm_2)
 
-            fc1 = TimeDistributed(Dense(256, input_shape=(512,)))(lstm_3)
+            lstm_4 = LSTM(512, batch_input_shape = (1,self.params.batch_size,27), stateful=True, return_sequences=True)(lstm_3)
 
-            fc2 = TimeDistributed(Dense(128, input_shape=(256,)))(fc1)
+            lstm_5 = LSTM(512, batch_input_shape = (1,self.params.batch_size,27), stateful=True, return_sequences=True)(lstm_4)
 
-            fc3_tran = TimeDistributed(Dense(3, input_shape=(128,)))(fc2)
+            fc1 = TimeDistributed(Dense(128, input_shape=(512,)))(lstm_5)
 
-            fc3_rot = TimeDistributed(Dense(3, input_shape=(128,)))(fc2)
+            fc2_tran = TimeDistributed(Dense(3, input_shape=(128,)))(fc1)
 
-            fc3_unc = TimeDistributed(Dense(21, input_shape=(128,)))(fc2)
+            fc2_rot = TimeDistributed(Dense(3, input_shape=(128,)))(fc1)
 
-            self.slam_model = Model([input1,input2,input3], [fc3_tran, fc3_rot, fc3_unc])
+#            fc2_unc = TimeDistributed(Dense(21, input_shape=(128,)))(fc1)
 
+            self.slam_model = Model([input1,input2,input3], [fc2_tran, fc2_rot, fc1])# , fc2_unc
 
+    def build_slam_architecture_addon(self):
+        
+        with tf.variable_scope('slam_model_addon',reuse=self.reuse_variables):
+            input = Input(batch_shape=(1,self.params.batch_size,128))
+
+            fc2_unc = TimeDistributed(Dense(21, input_shape=(128,)))(input)
+
+            self.slam_model = Model(input, fc2_unc)
 
     def build_model(self,img1,img2):
         with slim.arg_scope([slim.conv2d, slim.conv2d_transpose], activation_fn=tf.nn.elu):
@@ -274,15 +282,19 @@ class DeepslamModel(object):
             rot = tf.transpose(rot,perm=[2, 0, 1]) 
             unc = tf.transpose(unc,perm=[2, 0, 1])
 
-            [trans_est, rot_est, unc_est] = self.slam_model([trans,rot,unc])
+            [trans_est, rot_est, fc_in] = self.slam_model([trans,rot,unc])
 
             trans_est.set_shape(trans_est._keras_shape)
             rot_est.set_shape(rot_est._keras_shape)
-            unc_est.set_shape(unc_est._keras_shape)
+            fc_in.set_shape(fc_in._keras_shape)
 
             trans_est = tf.reshape(trans_est, [-1, 3])
             rot_est = tf.reshape(rot_est, [-1, 3])
-            unc_est = tf.reshape(unc_est, [-1, 21])
+
+            unc_est = fc_in
+#            unc_est = self.slam_model(fc_in)
+#            unc_est.set_shape(unc_est._keras_shape)
+#            unc_est = tf.reshape(unc_est, [-1, 21])
 
         return trans_est, rot_est, unc_est
 
@@ -292,18 +304,18 @@ class DeepslamModel(object):
         with tf.variable_scope('losses', reuse=self.reuse_variables):
             
             # Generate Q
-            L = tf.contrib.distributions.fill_triangular(self.unc_est)
-            Lt = tf.transpose(L,perm=[0, 2, 1])
-            self.Q = tf.matmul(L,Lt)
+#            L = tf.contrib.distributions.fill_triangular(self.unc_est)
+#            Lt = tf.transpose(L,perm=[0, 2, 1])
+#            self.Q = tf.matmul(L,Lt)
 
 
-#            # Generate poses
+            # Generate poses
 #            M_pre = compose_matrix(self.poses[:,:3],self.poses[:,3:])
 #            M_03 = M_pre[:1,:,:]
 #            M_23 = compose_matrix(self.rot_est[:1,:], self.tran_est[:1,:])
 #            M_02 = tf.matmul(M_03,tf.matrix_inverse(M_23))
-#            M_trans = tf.tile(M_02,[self.params.batch_size,1,1])
-#            M = tf.matmul(tf.matrix_inverse(M_trans),M_pre)
+#            M_trans = tf.tile(tf.matrix_inverse(M_02),[self.params.batch_size,1,1])
+#            M = tf.matmul(M_trans,M_pre)
 #            r,t = decompose_matrix(M)
 #            poses_gt = concatenate([r,t],axis=1)
             poses_gt = self.poses
@@ -315,14 +327,14 @@ class DeepslamModel(object):
             dist_t = tf.transpose(dist,perm=[0,2,1])
 
             # Compute mdist
-            res_Q_norm = tf.norm(self.Q,axis=[1,2])
-            res_Q_norm = Lambda(lambda x: 1.0 + x)(res_Q_norm)
+#            res_Q_norm = tf.norm(self.Q,axis=[1,2])
+#            res_Q_norm = Lambda(lambda x: 1.0 + x)(res_Q_norm)
             self.dist_sum = tf.reduce_mean(tf.matmul(dist_t,dist))
-            mdist = tf.matmul(tf.matmul(dist_t,tf.matrix_inverse(self.Q)),dist) + tf.log(res_Q_norm)
-#            mdist = tf.matmul(dist_t,dist) + tf.log(res_Q_norm) 
+#            mdist = tf.matmul(tf.matmul(dist_t,tf.matrix_inverse(self.Q)),dist) + tf.log(res_Q_norm)
+            mdist = tf.matmul(dist_t,dist) #+ tf.log(res_Q_norm) 
 
             # TOTAL LOSS
-            self.total_loss = tf.reduce_mean(mdist)
+            self.total_loss = tf.reduce_sum(mdist)
 
     def build_summaries(self):
         # SUMMARIES
@@ -331,6 +343,6 @@ class DeepslamModel(object):
             tf.summary.image('img_cur', self.img_cur,  max_outputs=3, collections=self.model_collection)
             tf.summary.image('img_next',  self.img_next,   max_outputs=3, collections=self.model_collection)
 
-            txtPredictions = tf.Print(tf.as_string(self.Q),[tf.as_string(self.Q)], message='predictions', name='txtPredictions')
-            tf.summary.text('predictions', txtPredictions, collections=self.model_collection)
+#            txtPredictions = tf.Print(tf.as_string(self.Q),[tf.as_string(self.Q)], message='predictions', name='txtPredictions')
+#            tf.summary.text('predictions', txtPredictions, collections=self.model_collection)
 
