@@ -28,7 +28,7 @@ parser.add_argument('--filenames_file',            type=str,   help='path to the
 parser.add_argument('--input_height',              type=int,   help='input height', default=256)
 parser.add_argument('--input_width',               type=int,   help='input width', default=512)
 
-parser.add_argument('--batch_size',                type=int,   help='batch size', default=1)
+parser.add_argument('--batch_size',                type=int,   help='batch size', default=100)
 parser.add_argument('--num_epochs',                type=int,   help='number of epochs', default=60)
 parser.add_argument('--learning_rate',             type=float, help='initial learning rate', default=1e-4)
 
@@ -180,16 +180,17 @@ def train(params):
             before_op_time = time.time()
             idx = step % steps_per_epoch
             if idx ==0:
-                model.slam_model.reset_states()
+#                model.slam_model.reset_states()
                 sess.run(init_op)
-            else:
-                if seq_per_epoch[idx-1] != seq_per_epoch[idx]:
-                    model.slam_model.reset_states()
-#            model.slam_model.reset_states()
+#            else:
+#                if seq_per_epoch[idx-1] != seq_per_epoch[idx]:
+#                    model.slam_model.reset_states()
 
+            model.slam_model.reset_states()
             if step % 100 == 0:
                 _, loss_value, summary_str = sess.run([apply_gradient_op, total_loss,summary_op])
                 summary_writer.add_summary(summary_str, global_step=step)
+#                print(poses_txt)
             else:
                 _, loss_value = sess.run([apply_gradient_op, total_loss])
 
@@ -203,7 +204,7 @@ def train(params):
             if step and step % 1000 == 0:
                 train_saver.save(sess, args.log_directory + '/' + args.model_name + '/model', global_step=step)
 
-        train_saver.save(sess, args.log_directory + '/' + args.model_name + '/model', global_step=num_total_steps)
+        train_saver.save(sess, args.log_directory + '/' + args.model_name + '/model', global_step=step)
 
 def test(params):
     """Test function."""

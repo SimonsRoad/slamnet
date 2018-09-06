@@ -32,12 +32,15 @@ def matrix_to_rpy(R):
 
     _num_batch = R.shape[0]  
 
+    sy = tf.sqrt(tf.square(R[:,0,0])+tf.square(R[:,1,0]))
+
     r = tf.atan2(R[:,2,1],R[:,2,2])
-    p = tf.atan2(-R[:,2,0],tf.sqrt(tf.square(R[:,2,1])+tf.square(R[:,2,2])))
-    y = tf.atan2(R[:,1,0],R[:,0,0])
+    p = tf.atan2(-R[:,2,0],sy)
+    y = tf.atan2(R[:,1,0],R[:,0,0]) 
 
     return r, p ,y
 
+      
 
 def compose_matrix(rot, trans):
     
@@ -59,6 +62,6 @@ def decompose_matrix(M):
 
     r,p,y = matrix_to_rpy(M[:,:3,:3])
     rot = tf.stack([r,p,y],axis=1)
-    trans = M[:,:3,1]
+    trans = M[:,:3,3]
 
     return rot, trans

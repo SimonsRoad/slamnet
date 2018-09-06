@@ -274,6 +274,8 @@ class DeepslamModel(object):
         with slim.arg_scope([slim.conv2d, slim.conv2d_transpose], activation_fn=tf.nn.elu):
 
             [trans, rot, unc] = self.pose_model([img1,img2])
+            self.tran_zero = trans[:1,:]
+            self.rot_zero = rot[:1,:]
 
             trans = tf.expand_dims(trans,2)
             rot = tf.expand_dims(rot,2)
@@ -281,6 +283,8 @@ class DeepslamModel(object):
             trans = tf.transpose(trans,perm=[2, 0, 1]) 
             rot = tf.transpose(rot,perm=[2, 0, 1]) 
             unc = tf.transpose(unc,perm=[2, 0, 1])
+
+
 
             [trans_est, rot_est, fc_in] = self.slam_model([trans,rot,unc])
 
@@ -310,15 +314,17 @@ class DeepslamModel(object):
 
 
             # Generate poses
-#            M_pre = compose_matrix(self.poses[:,:3],self.poses[:,3:])
-#            M_03 = M_pre[:1,:,:]
-#            M_23 = compose_matrix(self.rot_est[:1,:], self.tran_est[:1,:])
-#            M_02 = tf.matmul(M_03,tf.matrix_inverse(M_23))
-#            M_trans = tf.tile(tf.matrix_inverse(M_02),[self.params.batch_size,1,1])
-#            M = tf.matmul(M_trans,M_pre)
-#            r,t = decompose_matrix(M)
-#            poses_gt = concatenate([r,t],axis=1)
-            poses_gt = self.poses
+            M_pre = compose_matrix(self.poses[:,:3],self.poses[:,3:])
+            M_03 = M_pre[:1,:,:]
+            M_23 = compose_matrix(self.rot_zero, self.tran_zero)
+            M_02 = tf.matmul(M_03,tf.matrix_inverse(M_23))
+            M_20 = tf.matrix_inverse(M_02)
+            M_trans = tf.tile(M_20,[self.params.batch_size,1,1])
+            M = tf.matmul(M_trans,M_pre)
+            r,t = decompose_matrix(M)
+            poses_gt = concatenate([r,t],axis=1)
+#            poses_gt = self.poses
+            self.poses_gt = poses_gt
 
             # Compute dists
             poses_est = concatenate([self.rot_est, self.tran_est],axis=1)
