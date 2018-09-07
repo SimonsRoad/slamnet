@@ -28,9 +28,10 @@ parser.add_argument('--filenames_file',            type=str,   help='path to the
 parser.add_argument('--input_height',              type=int,   help='input height', default=256)
 parser.add_argument('--input_width',               type=int,   help='input width', default=512)
 
-parser.add_argument('--batch_size',                type=int,   help='batch size', default=100)
-parser.add_argument('--num_epochs',                type=int,   help='number of epochs', default=60)
-parser.add_argument('--learning_rate',             type=float, help='initial learning rate', default=1e-4)
+parser.add_argument('--batch_size',                type=int,   help='batch size', default=10)
+parser.add_argument('--num_epochs',                type=int,   help='number of epochs', default=40)
+parser.add_argument('--sequence_size',             type=int,   help='size of sequence', default=10)
+parser.add_argument('--learning_rate',             type=float, help='initial learning rate', default=1e-3)
 
 parser.add_argument('--num_gpus',                  type=int,   help='number of GPUs to use for training', default=1)
 parser.add_argument('--num_threads',               type=int,   help='number of threads to use for data loading', default=8)
@@ -74,7 +75,6 @@ def train(params):
         steps_per_epoch = np.ceil(num_training_samples / params.batch_size).astype(np.int32)
         seq_nums = np.reshape(seq_nums, (steps_per_epoch,int(params.batch_size)))
         seq_per_epoch = seq_nums[:,0]
-#        print(seq_per_epoch)
 
         num_total_steps = params.num_epochs * steps_per_epoch
         start_learning_rate = args.learning_rate
@@ -90,9 +90,6 @@ def train(params):
 
         # Load dataset
         dataloader = DeepslamDataloader(args.data_path, args.filenames_file, params, args.mode)
-#        image  = dataloader.image_batch
-#        next_image  = dataloader.next_image_batch
-#        poses = dataloader.poses_batch
         dataset = dataloader.dataset
         iterator = dataset.make_initializable_iterator()
         image, next_image, poses = iterator.get_next()
@@ -157,7 +154,6 @@ def train(params):
         sess.run(tf.global_variables_initializer())
         sess.run(tf.local_variables_initializer())
         coordinator = tf.train.Coordinator()
-#        threads = tf.train.start_queue_runners(sess=sess, coord=coordinator)
 
 
         # LOAD CHECKPOINT IF SET
@@ -172,6 +168,9 @@ def train(params):
 
             if args.retrain:
                 sess.run(global_step.assign(0))
+        
+        # SET COUNTS
+        iterations_for_seq = np.ceil(params.sequence_size/params.batch_size).astype(np.int32)
 
         # GO!
         start_step = global_step.eval(session=sess)
@@ -180,17 +179,19 @@ def train(params):
             before_op_time = time.time()
             idx = step % steps_per_epoch
             if idx ==0:
-#                model.slam_model.reset_states()
                 sess.run(init_op)
+#                model.slam_model.reset_states()  
 #            else:
 #                if seq_per_epoch[idx-1] != seq_per_epoch[idx]:
 #                    model.slam_model.reset_states()
 
-            model.slam_model.reset_states()
+            if step % iterations_for_seq == 0:
+                model.slam_model.reset_states()  
+
             if step % 100 == 0:
-                _, loss_value, summary_str = sess.run([apply_gradient_op, total_loss,summary_op])
+                _, loss_value, summary_str, poses_txt = sess.run([apply_gradient_op, total_loss,summary_op,model.poses_txt])
                 summary_writer.add_summary(summary_str, global_step=step)
-#                print(poses_txt)
+                print(poses_txt)
             else:
                 _, loss_value = sess.run([apply_gradient_op, total_loss])
 
@@ -201,7 +202,7 @@ def train(params):
                 training_time_left = (num_total_steps / step - 1.0) * time_sofar
                 print_string = 'batch {:>6} | examples/s: {:4.2f} | loss: {:.5f} | time elapsed: {:.2f}h | time left: {:.2f}h'
                 print(print_string.format(step, examples_per_sec, loss_value, time_sofar, training_time_left))
-            if step and step % 1000 == 0:
+            if step and (step+1) % steps_per_epoch == 0:
                 train_saver.save(sess, args.log_directory + '/' + args.model_name + '/model', global_step=step)
 
         train_saver.save(sess, args.log_directory + '/' + args.model_name + '/model', global_step=step)
@@ -263,6 +264,7 @@ def main(_):
         height=args.input_height,
         width=args.input_width,
         batch_size=args.batch_size,
+        sequence_size=args.sequence_size,
         num_threads=args.num_threads,
         num_epochs=args.num_epochs,
         full_summary=args.full_summary)

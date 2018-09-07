@@ -14,6 +14,7 @@ from transformers import *
 deepslam_parameters = namedtuple('parameters',
                         'height, width, '
                         'batch_size, '
+                        'sequence_size,'
                         'num_threads, '
                         'num_epochs, '
                         'full_summary')
@@ -247,19 +248,17 @@ class DeepslamModel(object):
 
             lstm_3 = LSTM(512, batch_input_shape = (1,self.params.batch_size,27), stateful=True, return_sequences=True)(lstm_2)
 
-            lstm_4 = LSTM(512, batch_input_shape = (1,self.params.batch_size,27), stateful=True, return_sequences=True)(lstm_3)
+            fc1 = TimeDistributed(Dense(256, input_shape=(512,)))(lstm_3)
 
-            lstm_5 = LSTM(512, batch_input_shape = (1,self.params.batch_size,27), stateful=True, return_sequences=True)(lstm_4)
+            fc2 = TimeDistributed(Dense(128, input_shape=(256,)))(fc1)
 
-            fc1 = TimeDistributed(Dense(128, input_shape=(512,)))(lstm_5)
+            fc3_tran = TimeDistributed(Dense(3, input_shape=(128,)))(fc2)
 
-            fc2_tran = TimeDistributed(Dense(3, input_shape=(128,)))(fc1)
+            fc3_rot = TimeDistributed(Dense(3, input_shape=(128,)))(fc2)
 
-            fc2_rot = TimeDistributed(Dense(3, input_shape=(128,)))(fc1)
+#            fc3_unc = TimeDistributed(Dense(21, input_shape=(128,)))(fc2)
 
-#            fc2_unc = TimeDistributed(Dense(21, input_shape=(128,)))(fc1)
-
-            self.slam_model = Model([input1,input2,input3], [fc2_tran, fc2_rot, fc1])# , fc2_unc
+            self.slam_model = Model([input1,input2,input3], [fc3_tran, fc3_rot, fc2])# , fc2_unc
 
     def build_slam_architecture_addon(self):
         
@@ -324,7 +323,7 @@ class DeepslamModel(object):
             r,t = decompose_matrix(M)
             poses_gt = concatenate([r,t],axis=1)
 #            poses_gt = self.poses
-            self.poses_gt = poses_gt
+
 
             # Compute dists
             poses_est = concatenate([self.rot_est, self.tran_est],axis=1)
@@ -340,7 +339,8 @@ class DeepslamModel(object):
             mdist = tf.matmul(dist_t,dist) #+ tf.log(res_Q_norm) 
 
             # TOTAL LOSS
-            self.total_loss = tf.reduce_sum(mdist)
+            self.total_loss = tf.reduce_mean(mdist)
+            self.poses_txt = poses_est[-1,:]#[poses_gt,poses_est]
 
     def build_summaries(self):
         # SUMMARIES

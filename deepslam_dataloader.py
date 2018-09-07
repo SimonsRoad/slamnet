@@ -5,8 +5,6 @@
 from __future__ import absolute_import, division, print_function
 import tensorflow as tf
 
-def string_length_tf(t):
-  return tf.py_func(len, [t], [tf.int64])
 
 class DeepslamDataloader(object):
     """deepslam dataloader"""
@@ -47,7 +45,6 @@ class DeepslamDataloader(object):
         return img_cur, img_next, poses
 
     def read_image(self, image_path):
-        path_length = string_length_tf(image_path)[0]
         image = tf.image.decode_png(tf.read_file(image_path))
         image  = tf.image.convert_image_dtype(image,  tf.float32) 
         image  = tf.image.resize_images(image,  [self.params.height, self.params.width], tf.image.ResizeMethod.AREA)
