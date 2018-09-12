@@ -32,11 +32,11 @@ class DeepslamModel(object):
         self.poses_next = poses_next
         self.model_collection = ['model_' + str(model_index)]
         self.reuse_variables = reuse_variables
+        self.rnn_batch_size = int(params.batch_size/params.sequence_size)
 
         self.build_depth_architecture()
         self.build_pose_architecture()
         self.build_slam_architecture()
-#        self.build_slam_architecture_addon()
 
         [self.tran_est, self.rot_est, self.unc_est] = self.build_model(self.img_cur, self.img_next)
         if self.mode == 'test':
@@ -236,35 +236,43 @@ class DeepslamModel(object):
     def build_slam_architecture(self):
         
         with tf.variable_scope('slam_model',reuse=self.reuse_variables):
-            input1 = Input(batch_shape=(1,self.params.batch_size,3))
+            input1 = Input(batch_shape=(self.rnn_batch_size,self.params.sequence_size,3))
 
-            input2 = Input(batch_shape=(1,self.params.batch_size,3))
+            input2 = Input(batch_shape=(self.rnn_batch_size,self.params.sequence_size,3))
 
-            input3 = Input(batch_shape=(1,self.params.batch_size,21))
+            input3 = Input(batch_shape=(self.rnn_batch_size,self.params.sequence_size,21))
 
-            input4 = Input(batch_shape=(1,self.params.batch_size,6))
+            input4 = Input(batch_shape=(self.rnn_batch_size,self.params.sequence_size,6))
 
             input = concatenate([input1,input2,input3,input4], axis=2)
         
-            lstm_1 = LSTM(1024, batch_input_shape = (1,self.params.batch_size,33), stateful=True, return_sequences=True)(input) #stateful=True, 
+            lstm_1 = LSTM(1024, batch_input_shape = (self.rnn_batch_size,self.params.sequence_size,33), stateful=True, return_sequences=True)(input) #stateful=True, 
     
-            lstm_2 = LSTM(1024, batch_input_shape = (1,self.params.batch_size,33), stateful=True, return_sequences=True)(lstm_1)
+            lstm_2 = LSTM(1024, batch_input_shape = (self.rnn_batch_size,self.params.sequence_size,33), stateful=True, return_sequences=True)(lstm_1)
 
-            lstm_3 = LSTM(1024, batch_input_shape = (1,self.params.batch_size,33), stateful=True, return_sequences=True)(lstm_2)
+            lstm_3 = LSTM(1024, batch_input_shape = (self.rnn_batch_size,self.params.sequence_size,33), stateful=True, return_sequences=True)(lstm_2)
 
-            lstm_4 = LSTM(2048, batch_input_shape = (1,self.params.batch_size,33), stateful=True, return_sequences=True)(lstm_3)
+            lstm_4 = LSTM(1024, batch_input_shape = (self.rnn_batch_size,self.params.sequence_size,33), stateful=True, return_sequences=True)(lstm_3)
 
-            lstm_5 = LSTM(4096, batch_input_shape = (1,self.params.batch_size,33), stateful=True, return_sequences=True)(lstm_4)
+            lstm_5 = LSTM(1024, batch_input_shape = (self.rnn_batch_size,self.params.sequence_size,33), stateful=True, return_sequences=True)(lstm_4)
 
-            fc1 = TimeDistributed(Dense(2048, input_shape=(4096,), activation='relu'))(lstm_5)
+            fc1_tran = TimeDistributed(Dense(512, input_shape=(1024,), activation='relu'))(lstm_5)
 
-            fc2 = TimeDistributed(Dense(1024, input_shape=(2048,), activation='relu'))(fc1)
+            fc2_tran = TimeDistributed(Dense(128, input_shape=(512,), activation='relu'))(fc1_tran)
 
-            fc3_tran = TimeDistributed(Dense(3, input_shape=(1024,)))(fc2)
+            fc3_tran = TimeDistributed(Dense(3, input_shape=(128,)))(fc2_tran)
 
-            fc3_rot = TimeDistributed(Dense(3, input_shape=(1024,)))(fc2)
+            fc1_rot = TimeDistributed(Dense(512, input_shape=(1024,), activation='relu'))(lstm_5)
 
-            fc3_unc = TimeDistributed(Dense(21, input_shape=(1024,)))(fc2)
+            fc2_rot = TimeDistributed(Dense(128, input_shape=(512,), activation='relu'))(fc1_rot)
+
+            fc3_rot = TimeDistributed(Dense(3, input_shape=(128,)))(fc2_rot)
+
+            fc1_unc = TimeDistributed(Dense(512, input_shape=(1024,), activation='relu'))(lstm_5)
+
+            fc2_unc = TimeDistributed(Dense(128, input_shape=(512,), activation='relu'))(fc1_unc)
+
+            fc3_unc = TimeDistributed(Dense(21, input_shape=(1024,)))(fc2_unc)
 
             self.slam_model = Model([input1,input2,input3,input4], [fc3_tran, fc3_rot, fc3_unc])
 
@@ -276,16 +284,20 @@ class DeepslamModel(object):
             self.tran_zero = trans[:1,:]
             self.rot_zero = rot[:1,:]
 
-            trans = tf.expand_dims(trans,2)
-            rot = tf.expand_dims(rot,2)
-            unc = tf.expand_dims(unc,2)
-            trans = tf.transpose(trans,perm=[2, 0, 1]) 
-            rot = tf.transpose(rot,perm=[2, 0, 1]) 
-            unc = tf.transpose(unc,perm=[2, 0, 1])
+#            trans = tf.expand_dims(trans,2)
+#            rot = tf.expand_dims(rot,2)
+#            unc = tf.expand_dims(unc,2)
+#            trans = tf.transpose(trans,perm=[2, 0, 1]) 
+#            rot = tf.transpose(rot,perm=[2, 0, 1]) 
+#            unc = tf.transpose(unc,perm=[2, 0, 1])
+#            in_poses = self.poses_cur
+#            in_poses = tf.expand_dims(in_poses,2)
+#            in_poses = tf.transpose(in_poses,perm=[2, 0, 1])
 
-            in_poses = self.poses_cur
-            in_poses = tf.expand_dims(in_poses,2)
-            in_poses = tf.transpose(in_poses,perm=[2, 0, 1])
+            trans = tf.reshape(trans,[self.rnn_batch_size,self.params.sequence_size,3])
+            rot = tf.reshape(rot,[self.rnn_batch_size,self.params.sequence_size,3])
+            unc = tf.reshape(unc,[self.rnn_batch_size,self.params.sequence_size,21])
+            in_poses = tf.reshape(self.poses_cur,[self.rnn_batch_size,self.params.sequence_size,6])
 
             [trans_est, rot_est, unc_est] = self.slam_model([trans,rot,unc,in_poses])
 

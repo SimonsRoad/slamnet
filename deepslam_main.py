@@ -28,9 +28,9 @@ parser.add_argument('--filenames_file',            type=str,   help='path to the
 parser.add_argument('--input_height',              type=int,   help='input height', default=256)
 parser.add_argument('--input_width',               type=int,   help='input width', default=512)
 
-parser.add_argument('--batch_size',                type=int,   help='batch size', default=10)
+parser.add_argument('--batch_size',                type=int,   help='batch size', default=100)
 parser.add_argument('--num_epochs',                type=int,   help='number of epochs', default=60)
-parser.add_argument('--sequence_size',             type=int,   help='size of sequence', default=10)
+parser.add_argument('--sequence_size',             type=int,   help='size of sequence', default=5)
 parser.add_argument('--learning_rate',             type=float, help='initial learning rate', default=1e-3)
 
 parser.add_argument('--num_gpus',                  type=int,   help='number of GPUs to use for training', default=1)
