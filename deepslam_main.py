@@ -29,7 +29,7 @@ parser.add_argument('--input_height',              type=int,   help='input heigh
 parser.add_argument('--input_width',               type=int,   help='input width', default=512)
 
 parser.add_argument('--batch_size',                type=int,   help='batch size', default=10)
-parser.add_argument('--num_epochs',                type=int,   help='number of epochs', default=40)
+parser.add_argument('--num_epochs',                type=int,   help='number of epochs', default=60)
 parser.add_argument('--sequence_size',             type=int,   help='size of sequence', default=10)
 parser.add_argument('--learning_rate',             type=float, help='initial learning rate', default=1e-3)
 
@@ -92,16 +92,18 @@ def train(params):
         dataloader = DeepslamDataloader(args.data_path, args.filenames_file, params, args.mode)
         dataset = dataloader.dataset
         iterator = dataset.make_initializable_iterator()
-        image, next_image, poses = iterator.get_next()
+        image, next_image, poses, next_poses = iterator.get_next()
         init_op = iterator.initializer
         image.set_shape( [params.batch_size, params.height, params.width, 3])
         next_image.set_shape( [params.batch_size,params.height, params.width, 3])
-        poses.set_shape( [params.batch_size,6])   
+        poses.set_shape( [params.batch_size,6]) 
+        next_poses.set_shape( [params.batch_size,6])   
 
         # split for each gpu
         image_splits  = tf.split(image,  args.num_gpus, 0)
         next_image_splits = tf.split(next_image, args.num_gpus, 0)
         poses_splits = tf.split(poses, args.num_gpus, 0)
+        next_poses_splits = tf.split(next_poses, args.num_gpus, 0)
 
         tower_grads  = []
         tower_losses = []
@@ -110,7 +112,7 @@ def train(params):
             for i in range(args.num_gpus):
                 with tf.device('/gpu:%d' % i):
 
-                    model = DeepslamModel(params, args.mode, image_splits[i], next_image_splits[i], poses_splits[i], reuse_variables, i)
+                    model = DeepslamModel(params, args.mode, image_splits[i], next_image_splits[i], poses_splits[i], next_poses_splits[i], reuse_variables, i)
 
                     loss = model.total_loss
                     tower_losses.append(loss)
@@ -170,7 +172,7 @@ def train(params):
                 sess.run(global_step.assign(0))
         
         # SET COUNTS
-        iterations_for_seq = np.ceil(params.sequence_size/params.batch_size).astype(np.int32)
+#        iterations_for_seq = np.ceil(params.sequence_size/params.batch_size).astype(np.int32)
 
         # GO!
         start_step = global_step.eval(session=sess)
@@ -185,8 +187,8 @@ def train(params):
 #                if seq_per_epoch[idx-1] != seq_per_epoch[idx]:
 #                    model.slam_model.reset_states()
 
-            if step % iterations_for_seq == 0:
-                model.slam_model.reset_states()  
+            model.slam_model.reset_states()  
+
 
             if step % 100 == 0:
                 _, loss_value, summary_str, poses_txt = sess.run([apply_gradient_op, total_loss,summary_op,model.poses_txt])
@@ -202,7 +204,7 @@ def train(params):
                 training_time_left = (num_total_steps / step - 1.0) * time_sofar
                 print_string = 'batch {:>6} | examples/s: {:4.2f} | loss: {:.5f} | time elapsed: {:.2f}h | time left: {:.2f}h'
                 print(print_string.format(step, examples_per_sec, loss_value, time_sofar, training_time_left))
-            if step and (step+1) % steps_per_epoch == 0:
+            if step and (step+1) % (steps_per_epoch*10) == 0:
                 train_saver.save(sess, args.log_directory + '/' + args.model_name + '/model', global_step=step)
 
         train_saver.save(sess, args.log_directory + '/' + args.model_name + '/model', global_step=step)

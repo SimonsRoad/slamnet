@@ -39,18 +39,27 @@ for dnum=1:numel(data_num)
     read_str = strcat(base_str,num_str);
     read_fid = fopen(read_str,'r');
     lines = fscanf(read_fid, '%f %f %f %f %f %f %f %f %f %f %f %f\n',[12,data_num(dnum)+1]);
+    prev_data = lines(:,1);
+    prev_mat = reshape(prev_data,[4,3])';
+    prev_tran = prev_mat(1:3,4);
+    prev_rot = rotm2eul(prev_mat(1:3,1:3));
     for iter=1:data_num(dnum)
         % compute pose
         cur_data = lines(:,iter+1);
-        tran_mat = reshape(cur_data,[4,3])';
-        eul = rotm2eul(tran_mat(1:3,1:3));
+        cur_mat  = reshape(cur_data,[4,3])';
+        cur_tran = cur_mat(1:3,4);
+        cur_rot  = rotm2eul(cur_mat(1:3,1:3));
         % write data
         fprintf(save_fid, '%d ', dnum-1);
         fprintf(save_fid, 'sequences/%02d/image_2/%06d.png ', dnum-1, iter-1);
         fprintf(save_fid, 'sequences/%02d/image_2/%06d.png ', dnum-1, iter);
-        fprintf(save_fid, '%f %f %f ', eul(1), eul(2), eul(3));
-        fprintf(save_fid, '%f %f %f ', tran_mat(1,4), tran_mat(2,4), tran_mat(3,4));
+        fprintf(save_fid, '%f %f %f ', prev_rot(1), prev_rot(2), prev_rot(3));
+        fprintf(save_fid, '%f %f %f ', prev_tran(1), prev_tran(2), prev_tran(3));       
+        fprintf(save_fid, '%f %f %f ', cur_rot(1), cur_rot(2), cur_rot(3));
+        fprintf(save_fid, '%f %f %f ', cur_tran(1), cur_tran(2), cur_tran(3));
         fprintf(save_fid, '\n');
+        prev_tran = cur_tran;
+        prev_rot  = cur_rot;
     end
 end
 fclose(save_fid);
