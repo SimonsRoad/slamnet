@@ -30,7 +30,7 @@ parser.add_argument('--input_width',               type=int,   help='input width
 
 parser.add_argument('--batch_size',                type=int,   help='batch size', default=100)
 parser.add_argument('--num_epochs',                type=int,   help='number of epochs', default=60)
-parser.add_argument('--sequence_size',             type=int,   help='size of sequence', default=5)
+parser.add_argument('--sequence_size',             type=int,   help='size of sequence', default=10)
 parser.add_argument('--learning_rate',             type=float, help='initial learning rate', default=1e-3)
 
 parser.add_argument('--num_gpus',                  type=int,   help='number of GPUs to use for training', default=1)
@@ -198,7 +198,7 @@ def train(params):
                 _, loss_value = sess.run([apply_gradient_op, total_loss])
 
             duration = time.time() - before_op_time
-            if step and step % 100 == 0:
+            if step % 100 == 0:
                 examples_per_sec = params.batch_size / duration
                 time_sofar = (time.time() - start_time) / 3600
                 training_time_left = (num_total_steps / step - 1.0) * time_sofar

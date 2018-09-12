@@ -242,39 +242,39 @@ class DeepslamModel(object):
 
             input3 = Input(batch_shape=(self.rnn_batch_size,self.params.sequence_size,21))
 
-            input4 = Input(batch_shape=(self.rnn_batch_size,self.params.sequence_size,6))
+#            input4 = Input(batch_shape=(self.rnn_batch_size,self.params.sequence_size,6))
 
-            input = concatenate([input1,input2,input3,input4], axis=2)
+            input = concatenate([input1,input2,input3], axis=2)
         
             lstm_1 = LSTM(1024, batch_input_shape = (self.rnn_batch_size,self.params.sequence_size,33), stateful=True, return_sequences=True)(input) #stateful=True, 
     
             lstm_2 = LSTM(1024, batch_input_shape = (self.rnn_batch_size,self.params.sequence_size,33), stateful=True, return_sequences=True)(lstm_1)
 
-            lstm_3 = LSTM(1024, batch_input_shape = (self.rnn_batch_size,self.params.sequence_size,33), stateful=True, return_sequences=True)(lstm_2)
+#            lstm_3 = LSTM(1024, batch_input_shape = (self.rnn_batch_size,self.params.sequence_size,33), stateful=True, return_sequences=True)(lstm_2)
 
-            lstm_4 = LSTM(1024, batch_input_shape = (self.rnn_batch_size,self.params.sequence_size,33), stateful=True, return_sequences=True)(lstm_3)
+#            lstm_4 = LSTM(1024, batch_input_shape = (self.rnn_batch_size,self.params.sequence_size,33), stateful=True, return_sequences=True)(lstm_3)
 
-            lstm_5 = LSTM(1024, batch_input_shape = (self.rnn_batch_size,self.params.sequence_size,33), stateful=True, return_sequences=True)(lstm_4)
+#            lstm_5 = LSTM(1024, batch_input_shape = (self.rnn_batch_size,self.params.sequence_size,33), stateful=True, return_sequences=True)(lstm_4)
 
-            fc1_tran = TimeDistributed(Dense(512, input_shape=(1024,), activation='relu'))(lstm_5)
+            fc1_tran = TimeDistributed(Dense(512, input_shape=(1024,), activation='relu'))(lstm_2)
 
             fc2_tran = TimeDistributed(Dense(128, input_shape=(512,), activation='relu'))(fc1_tran)
 
             fc3_tran = TimeDistributed(Dense(3, input_shape=(128,)))(fc2_tran)
 
-            fc1_rot = TimeDistributed(Dense(512, input_shape=(1024,), activation='relu'))(lstm_5)
+            fc1_rot = TimeDistributed(Dense(512, input_shape=(1024,), activation='relu'))(lstm_2)
 
             fc2_rot = TimeDistributed(Dense(128, input_shape=(512,), activation='relu'))(fc1_rot)
 
             fc3_rot = TimeDistributed(Dense(3, input_shape=(128,)))(fc2_rot)
 
-            fc1_unc = TimeDistributed(Dense(512, input_shape=(1024,), activation='relu'))(lstm_5)
+            fc1_unc = TimeDistributed(Dense(512, input_shape=(1024,), activation='relu'))(lstm_2)
 
             fc2_unc = TimeDistributed(Dense(128, input_shape=(512,), activation='relu'))(fc1_unc)
 
-            fc3_unc = TimeDistributed(Dense(21, input_shape=(1024,)))(fc2_unc)
+            fc3_unc = TimeDistributed(Dense(21, input_shape=(128,)))(fc2_unc)
 
-            self.slam_model = Model([input1,input2,input3,input4], [fc3_tran, fc3_rot, fc3_unc])
+            self.slam_model = Model([input1,input2,input3], [fc3_tran, fc3_rot, fc3_unc])
 
 
     def build_model(self,img1,img2):
@@ -284,22 +284,12 @@ class DeepslamModel(object):
             self.tran_zero = trans[:1,:]
             self.rot_zero = rot[:1,:]
 
-#            trans = tf.expand_dims(trans,2)
-#            rot = tf.expand_dims(rot,2)
-#            unc = tf.expand_dims(unc,2)
-#            trans = tf.transpose(trans,perm=[2, 0, 1]) 
-#            rot = tf.transpose(rot,perm=[2, 0, 1]) 
-#            unc = tf.transpose(unc,perm=[2, 0, 1])
-#            in_poses = self.poses_cur
-#            in_poses = tf.expand_dims(in_poses,2)
-#            in_poses = tf.transpose(in_poses,perm=[2, 0, 1])
-
             trans = tf.reshape(trans,[self.rnn_batch_size,self.params.sequence_size,3])
             rot = tf.reshape(rot,[self.rnn_batch_size,self.params.sequence_size,3])
             unc = tf.reshape(unc,[self.rnn_batch_size,self.params.sequence_size,21])
-            in_poses = tf.reshape(self.poses_cur,[self.rnn_batch_size,self.params.sequence_size,6])
+#            in_poses = tf.reshape(self.poses_cur,[self.rnn_batch_size,self.params.sequence_size,6])
 
-            [trans_est, rot_est, unc_est] = self.slam_model([trans,rot,unc,in_poses])
+            [trans_est, rot_est, unc_est] = self.slam_model([trans,rot,unc])
 
             trans_est.set_shape(trans_est._keras_shape)
             rot_est.set_shape(rot_est._keras_shape)
@@ -311,6 +301,28 @@ class DeepslamModel(object):
 
         return trans_est, rot_est, unc_est
 
+    def compute_SE3_estimates(self):
+        in_poses = tf.reshape(self.poses_cur,[self.rnn_batch_size,self.params.sequence_size,6])
+        rot_init = tf.reshape(in_poses[:,:1,:3],[self.rnn_batch_size,3])
+        tran_init = tf.reshape(in_poses[:,:1,3:],[self.rnn_batch_size,3])
+        M_init = compose_matrix(rot_init,tran_init)
+        M_delta = compose_matrix(self.rot_est,self.tran_est)
+        M_delta = tf.reshape(M_delta,[self.rnn_batch_size,self.params.sequence_size,4,4])
+        
+        delta = tf.reshape(M_delta[:,:1,:,:],[self.rnn_batch_size,4,4])
+        prev_est = tf.matmul(M_init,delta)
+        M_est = tf.expand_dims(prev_est,3)
+        M_est = tf.transpose(M_est,perm=[0,3,1,2])
+
+        for i in range(1,self.params.sequence_size):
+            delta = tf.reshape(M_delta[:,i,:,:],[self.rnn_batch_size,4,4])
+            prev_est = tf.matmul(prev_est,delta)
+            tmp_est = tf.expand_dims(prev_est,3)
+            tmp_est = tf.transpose(tmp_est,perm=[0,3,1,2])
+            M_est = concatenate([M_est,tmp_est], axis=1)
+
+        M_est = tf.reshape(M_est,[-1,4,4])
+        return M_est
 
 
     def build_losses(self):
@@ -323,21 +335,12 @@ class DeepslamModel(object):
 
 
             # Generate poses
-#            M_pre = compose_matrix(self.poses[:,:3],self.poses[:,3:])
-#            M_03 = M_pre[:1,:,:]
-#            M_23 = compose_matrix(self.rot_zero, self.tran_zero)
-#            M_02 = tf.matmul(M_03,tf.matrix_inverse(M_23))
-#            M_20 = tf.matrix_inverse(M_02)
-#            M_trans = tf.tile(M_20,[self.params.batch_size,1,1])
-#            M = tf.matmul(M_trans,M_pre)
-#            r,t = decompose_matrix(M)
-#            poses_gt = concatenate([r,t],axis=1)
-            poses_gt = self.poses_next
-
+            M_est = self.compute_SE3_estimates()
+            M_gt  = compose_matrix(self.poses_next[:,:3],self.poses_next[:,3:])
 
             # Compute dists
-            poses_est = concatenate([self.rot_est, self.tran_est],axis=1)
-            dist = poses_est-poses_gt
+            r,t = decompose_matrix(tf.matmul(tf.matrix_inverse(M_gt),M_est))
+            dist = concatenate([r,t],axis=1)
             dist = tf.expand_dims(dist,2)
             dist_t = tf.transpose(dist,perm=[0,2,1])
 
@@ -350,7 +353,7 @@ class DeepslamModel(object):
 
             # TOTAL LOSS
             self.total_loss = tf.reduce_mean(mdist)
-            self.poses_txt = [poses_est[-1,:],poses_gt[-1,:]]#[poses_gt,poses_est]
+            self.poses_txt = dist[-1,:]#[poses_est[-1,:],poses_gt[-1,:]]#[poses_gt,poses_est]
 
     def build_summaries(self):
         # SUMMARIES
@@ -359,6 +362,6 @@ class DeepslamModel(object):
             tf.summary.image('img_cur', self.img_cur,  max_outputs=3, collections=self.model_collection)
             tf.summary.image('img_next',  self.img_next,   max_outputs=3, collections=self.model_collection)
 
-#            txtPredictions = tf.Print(tf.as_string(self.Q),[tf.as_string(self.Q)], message='predictions', name='txtPredictions')
-#            tf.summary.text('predictions', txtPredictions, collections=self.model_collection)
+            txtPredictions = tf.Print(tf.as_string(self.Q),[tf.as_string(self.Q)], message='predictions', name='txtPredictions')
+            tf.summary.text('predictions', txtPredictions, collections=self.model_collection)
 
