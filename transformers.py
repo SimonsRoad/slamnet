@@ -57,15 +57,6 @@ def matrix_to_rpy(R):
     res_y = tf.zeros([1,1],tf.float32)
     for i in range(_num_batch):
         r,p,y = tf.cond(tf.less(sy[i],1e-6), lambda: f2(R[i,:,:],sy[i]), lambda: f1(R[i,:,:],sy[i]))
-#        print(singular)
-#        if singular:
-#            r = tf.atan2(-R[i,1,2], R[i,1,1])
-#            p = tf.atan2(-R[i,2,0], sy[i])
-#            y = tf.zeros([1],tf.float32)
-#        else:
-#            r = tf.atan2(R[i,2,1],R[i,2,2])
-#            p = tf.atan2(R[i,2,0],sy[i]) 
-#            y = tf.atan2(R[i,1,0],R[i,0,0])
         r = tf.expand_dims(r,0)
         r = tf.expand_dims(r,1)
         p = tf.expand_dims(p,0)

@@ -29,7 +29,7 @@ parser.add_argument('--input_height',              type=int,   help='input heigh
 parser.add_argument('--input_width',               type=int,   help='input width', default=512)
 
 parser.add_argument('--batch_size',                type=int,   help='batch size', default=100)
-parser.add_argument('--num_epochs',                type=int,   help='number of epochs', default=60)
+parser.add_argument('--num_epochs',                type=int,   help='number of epochs', default=200)
 parser.add_argument('--sequence_size',             type=int,   help='size of sequence', default=10)
 parser.add_argument('--learning_rate',             type=float, help='initial learning rate', default=1e-3)
 
@@ -80,7 +80,8 @@ def train(params):
         start_learning_rate = args.learning_rate
 
         boundaries = [np.int32((3/5) * num_total_steps), np.int32((4/5) * num_total_steps)]
-        values = [args.learning_rate, args.learning_rate / 2, args.learning_rate / 4]
+#        values = [args.learning_rate, args.learning_rate / 2, args.learning_rate / 4]
+        values = [args.learning_rate, args.learning_rate, args.learning_rate]
         learning_rate = tf.train.piecewise_constant(global_step, boundaries, values)
 
         opt_step = tf.train.AdamOptimizer(learning_rate)

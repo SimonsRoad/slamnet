@@ -301,27 +301,41 @@ class DeepslamModel(object):
 
         return trans_est, rot_est, unc_est
 
+#    def compute_SE3_estimates(self):
+#        in_poses = tf.reshape(self.poses_cur,[self.rnn_batch_size,self.params.sequence_size,6])
+#        rot_init = tf.reshape(in_poses[:,:1,:3],[self.rnn_batch_size,3])
+#        tran_init = tf.reshape(in_poses[:,:1,3:],[self.rnn_batch_size,3])
+#        M_init = compose_matrix(rot_init,tran_init)
+#        M_delta = compose_matrix(self.rot_est,self.tran_est)
+#        M_delta = tf.reshape(M_delta,[self.rnn_batch_size,self.params.sequence_size,4,4])
+#        
+#        delta = tf.reshape(M_delta[:,:1,:,:],[self.rnn_batch_size,4,4])
+#        prev_est = tf.matmul(M_init,delta)
+#        M_est = tf.expand_dims(prev_est,3)
+#        M_est = tf.transpose(M_est,perm=[0,3,1,2])
+
+#        for i in range(1,self.params.sequence_size):
+#            delta = tf.reshape(M_delta[:,i,:,:],[self.rnn_batch_size,4,4])
+#            prev_est = tf.matmul(prev_est,delta)
+#            tmp_est = tf.expand_dims(prev_est,3)
+#            tmp_est = tf.transpose(tmp_est,perm=[0,3,1,2])
+#            M_est = concatenate([M_est,tmp_est], axis=1)
+
+#        M_est = tf.reshape(M_est,[-1,4,4])
+#        return M_est
+
     def compute_SE3_estimates(self):
         in_poses = tf.reshape(self.poses_cur,[self.rnn_batch_size,self.params.sequence_size,6])
         rot_init = tf.reshape(in_poses[:,:1,:3],[self.rnn_batch_size,3])
         tran_init = tf.reshape(in_poses[:,:1,3:],[self.rnn_batch_size,3])
         M_init = compose_matrix(rot_init,tran_init)
+        M_init = tf.expand_dims(M_init,1)
+        M_init_tile = tf.tile(M_init, tf.stack([1,self.params.sequence_size,1,1]))
+        M_init = tf.reshape(M_init_tile,[-1,4,4]) 
         M_delta = compose_matrix(self.rot_est,self.tran_est)
-        M_delta = tf.reshape(M_delta,[self.rnn_batch_size,self.params.sequence_size,4,4])
-        
-        delta = tf.reshape(M_delta[:,:1,:,:],[self.rnn_batch_size,4,4])
-        prev_est = tf.matmul(M_init,delta)
-        M_est = tf.expand_dims(prev_est,3)
-        M_est = tf.transpose(M_est,perm=[0,3,1,2])
+        M_est = tf.matmul(M_init,M_delta)
+                
 
-        for i in range(1,self.params.sequence_size):
-            delta = tf.reshape(M_delta[:,i,:,:],[self.rnn_batch_size,4,4])
-            prev_est = tf.matmul(prev_est,delta)
-            tmp_est = tf.expand_dims(prev_est,3)
-            tmp_est = tf.transpose(tmp_est,perm=[0,3,1,2])
-            M_est = concatenate([M_est,tmp_est], axis=1)
-
-        M_est = tf.reshape(M_est,[-1,4,4])
         return M_est
 
 
