@@ -277,9 +277,9 @@ class DeepslamModel(object):
 
             input = concatenate([input1,input2,input3], axis=2)
         
-            lstm_1 = LSTM(1024, batch_input_shape = (self.rnn_batch_size,self.params.sequence_size,21), stateful=True, return_sequences=True)(input)
+            lstm_1 = LSTM(1024, batch_input_shape = (self.rnn_batch_size,self.params.sequence_size,27), stateful=True, return_sequences=True)(input)
     
-            lstm_2 = LSTM(1024, batch_input_shape = (self.rnn_batch_size,self.params.sequence_size,21), stateful=True, return_sequences=True)(lstm_1)
+            lstm_2 = LSTM(1024, batch_input_shape = (self.rnn_batch_size,self.params.sequence_size,27), stateful=True, return_sequences=True)(lstm_1)
 
             fc1_unc = TimeDistributed(Dense(512, input_shape=(1024,), activation='relu'))(lstm_2)
 
