@@ -37,8 +37,9 @@ class DeepslamModel(object):
         self.build_depth_architecture()
         self.build_pose_architecture()
         self.build_slam_architecture()
+        self.build_slam_architecture_addon()
 
-        [self.tran_est, self.rot_est] = self.build_model(self.img_cur, self.img_next)#, self.unc_est
+        [self.tran_est, self.rot_est, self.unc_est] = self.build_model(self.img_cur, self.img_next)#
 
         if self.mode == 'test':
             return
@@ -243,7 +244,6 @@ class DeepslamModel(object):
 
             input3 = Input(batch_shape=(self.rnn_batch_size,self.params.sequence_size,21))
 
-
             input = concatenate([input1,input2,input3], axis=2)
         
             lstm_1 = LSTM(1024, batch_input_shape = (self.rnn_batch_size,self.params.sequence_size,27), stateful=True, return_sequences=True)(input)
@@ -269,7 +269,13 @@ class DeepslamModel(object):
         
         with tf.variable_scope('slam_model_addon',reuse=self.reuse_variables):
 
-            input = Input(batch_shape=(self.rnn_batch_size,self.params.sequence_size,21))
+            input1 = Input(batch_shape=(self.rnn_batch_size,self.params.sequence_size,3))
+
+            input2 = Input(batch_shape=(self.rnn_batch_size,self.params.sequence_size,3))
+
+            input3 = Input(batch_shape=(self.rnn_batch_size,self.params.sequence_size,21))
+
+            input = concatenate([input1,input2,input3], axis=2)
         
             lstm_1 = LSTM(1024, batch_input_shape = (self.rnn_batch_size,self.params.sequence_size,21), stateful=True, return_sequences=True)(input)
     
@@ -281,7 +287,7 @@ class DeepslamModel(object):
 
             fc3_unc = TimeDistributed(Dense(21, input_shape=(128,)))(fc2_unc)
 
-            self.slam_model = Model(input, fc3_unc)
+            self.slam_model_addon = Model([input1,input2,input3], fc3_unc)
 
 
     def build_model(self,img1,img2):
@@ -296,16 +302,17 @@ class DeepslamModel(object):
             unc = tf.reshape(unc,[self.rnn_batch_size,self.params.sequence_size,21])
 
             [trans_est, rot_est] = self.slam_model([trans,rot,unc])
+            unc_est = self.slam_model_addon([trans,rot,unc])
 
             trans_est.set_shape(trans_est._keras_shape)
             rot_est.set_shape(rot_est._keras_shape)
-#            unc_est.set_shape(unc_est._keras_shape)
+            unc_est.set_shape(unc_est._keras_shape)
 
             trans_est = tf.reshape(trans_est, [-1, 3])
             rot_est = tf.reshape(rot_est, [-1, 3])
-#            unc_est = tf.reshape(unc_est, [-1, 21])
+            unc_est = tf.reshape(unc_est, [-1, 21])
 
-        return trans_est, rot_est# , unc_est
+        return trans_est, rot_est, unc_est
 
 
 
@@ -342,9 +349,9 @@ class DeepslamModel(object):
         with tf.variable_scope('losses', reuse=self.reuse_variables):
             
             # Generate Q
-#            L = tf.contrib.distributions.fill_triangular(self.unc_est)
-#            Lt = tf.transpose(L,perm=[0, 2, 1])
-#            self.Q = tf.matmul(L,Lt)
+            L = tf.contrib.distributions.fill_triangular(self.unc_est)
+            Lt = tf.transpose(L,perm=[0, 2, 1])
+            self.Q = tf.matmul(L,Lt)
 
 
             # Generate poses
@@ -365,10 +372,10 @@ class DeepslamModel(object):
             dist_t = tf.transpose(dist,perm=[0,2,1])
 
             # Compute mdist
-#            res_Q_norm = tf.norm(self.Q,axis=[1,2])
+            res_Q_norm = tf.norm(self.Q,axis=[1,2])
 #            res_Q_norm = Lambda(lambda x: 1.0 + x)(res_Q_norm)
-#            mdist = tf.matmul(tf.matmul(dist_t,tf.matrix_inverse(self.Q)),dist) + tf.log(res_Q_norm)
-            mdist = tf.matmul(dist_t,dist)# + tf.log(res_Q_norm) 
+            mdist = tf.matmul(tf.matmul(dist_t,tf.matrix_inverse(self.Q)),dist) + tf.log(res_Q_norm)
+#            mdist = tf.matmul(dist_t,dist)# + tf.log(res_Q_norm) 
 
             # TOTAL LOSS
             self.dist_sum= tf.reduce_mean(tf.sqrt(tf.matmul(dist_t,dist)))
@@ -382,6 +389,6 @@ class DeepslamModel(object):
             tf.summary.image('img_cur', self.img_cur,  max_outputs=3, collections=self.model_collection)
             tf.summary.image('img_next',  self.img_next,   max_outputs=3, collections=self.model_collection)
 
-#            txtPredictions = tf.Print(tf.as_string(self.Q),[tf.as_string(self.Q)], message='predictions', name='txtPredictions')
-#            tf.summary.text('predictions', txtPredictions, collections=self.model_collection)
+            txtPredictions = tf.Print(tf.as_string(self.Q),[tf.as_string(self.Q)], message='predictions', name='txtPredictions')
+            tf.summary.text('predictions', txtPredictions, collections=self.model_collection)
 
