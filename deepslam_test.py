@@ -61,6 +61,7 @@ class deepslam:
             height=args.input_height,
             width=args.input_width,
             batch_size=1,
+            sequence_size=1,
             num_threads=1,
             num_epochs=1,
             full_summary=False)
@@ -121,12 +122,15 @@ class deepslam:
 
     def test_simple(self):
         """Test function."""
-        [tran, rot] = self.sess.run([self.model.tran_est, self.model.rot_est], feed_dict={self.img_cur: self.img_left, self.img_next: self.img_left_next})
+        [tran, rot] = self.sess.run([self.model.tran_est, self.model.rot_est], feed_dict={self.model.img_cur: self.img_left, self.model.img_next: self.img_left_next})
 
 
         #Publish R and t
+        print("publish R and t")
         tran = tran.squeeze()
         rot  = rot.squeeze()
+        print(tran)
+        print(rot)
         br = ros_tf.TransformBroadcaster()
         br.sendTransform(tran,
                          ros_tf.transformations.quaternion_from_euler(rot[0],rot[1],rot[2]),

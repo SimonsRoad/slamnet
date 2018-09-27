@@ -37,7 +37,7 @@ class DeepslamModel(object):
         self.build_depth_architecture()
         self.build_pose_architecture()
         self.build_slam_architecture()
-        self.build_slam_architecture_addon()
+#        self.build_slam_architecture_addon()
 
         [self.tran_est, self.rot_est, self.unc_est] = self.build_model(self.img_cur, self.img_next)#
 
@@ -248,7 +248,7 @@ class DeepslamModel(object):
         
             lstm_1 = LSTM(1024, batch_input_shape = (self.rnn_batch_size,self.params.sequence_size,27), stateful=True, return_sequences=True)(input)
     
-            lstm_2 = LSTM(1024, batch_input_shape = (self.rnn_batch_size,self.params.sequence_size,27), stateful=True, return_sequences=True)(lstm_1)
+            lstm_2 = LSTM(1024, stateful=True, return_sequences=True)(lstm_1)#batch_input_shape = (self.rnn_batch_size,self.params.sequence_size,27), 
 
 
             fc1_tran = TimeDistributed(Dense(512, input_shape=(1024,), activation='relu'))(lstm_2)
@@ -263,7 +263,13 @@ class DeepslamModel(object):
 
             fc3_rot = TimeDistributed(Dense(3, input_shape=(128,)))(fc2_rot)
 
-            self.slam_model = Model([input1,input2,input3], [fc3_tran, fc3_rot])
+            fc1_unc = TimeDistributed(Dense(512, input_shape=(1024,), activation='relu'))(lstm_2)
+
+            fc2_unc = TimeDistributed(Dense(128, input_shape=(512,), activation='relu'))(fc1_unc)
+
+            fc3_unc = TimeDistributed(Dense(21, input_shape=(128,)))(fc2_unc)
+
+            self.slam_model = Model([input1,input2,input3], [fc3_tran, fc3_rot, fc3_unc])
 
     def build_slam_architecture_addon(self):
         
@@ -301,8 +307,8 @@ class DeepslamModel(object):
             rot = tf.reshape(rot,[self.rnn_batch_size,self.params.sequence_size,3])
             unc = tf.reshape(unc,[self.rnn_batch_size,self.params.sequence_size,21])
 
-            [trans_est, rot_est] = self.slam_model([trans,rot,unc])
-            unc_est = self.slam_model_addon([trans,rot,unc])
+            [trans_est, rot_est, unc_est] = self.slam_model([trans,rot,unc])
+#            unc_est = self.slam_model_addon([trans,rot,unc])
 
             trans_est.set_shape(trans_est._keras_shape)
             rot_est.set_shape(rot_est._keras_shape)
