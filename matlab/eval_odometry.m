@@ -61,8 +61,8 @@ count = 1;
 for iter=1:N
     len = sqrt(tran_gt(iter,:)*tran_gt(iter,:)');
     if len>lengths(count)
-        rot_error_est(count) = rad2deg(real(acos((rot_est(iter,:)-1)/2)));
-        tran_error_est(count) = sqrt(tran_est(iter,:)*tran_est(iter,:)');
+        rot_error_est(count) = rad2deg(real(acos((rot_est(iter,:)-1)/2)))/len;
+        tran_error_est(count) = sqrt(tran_est(iter,:)*tran_est(iter,:)')/len;
         count = count+1;
     end
 end

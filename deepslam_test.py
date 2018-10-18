@@ -55,20 +55,21 @@ class deepslam:
         '''Initialize refresh parameters '''
         self.is_left_in  = False
         self.is_start = False
+        self.test_num = 0
 
         '''Initialize network for the VO estimation'''
         params = deepslam_parameters(
             height=args.input_height,
             width=args.input_width,
-            batch_size=1,
-            sequence_size=1,
+            batch_size=10,
+            sequence_size=10,
             num_threads=1,
             num_epochs=1,
             full_summary=False)
 
-        self.left  = tf.placeholder(tf.float32, [1, args.input_height, args.input_width, 3])
-        self.left_next  = tf.placeholder(tf.float32, [1, args.input_height, args.input_width, 3])
-        self.model = DeepslamModel(params, "test", self.left, self.left_next, None, None)
+        left  = tf.placeholder(tf.float32, [10, args.input_height, args.input_width, 3])
+        left_next  = tf.placeholder(tf.float32, [10, args.input_height, args.input_width, 3])
+        self.model = DeepslamModel(params, "test", left, left_next, None, None)
 
         # SESSION
         config = tf.ConfigProto(allow_soft_placement=True)
@@ -121,14 +122,33 @@ class deepslam:
 
 
     def test_simple(self):
+
+        if self.test_num == 0:
+            self.batch_left = self.img_left
+            self.batch_left_next = self.img_left_next
+        else:
+            self.batch_left = self.batch_left[:self.test_num+1,:,:,:]
+            self.batch_left_next = self.batch_left_next[:self.test_num+1,:,:,:]
+
+        if self.test_num<10:
+            num = 9 - self.test_num
+            left_tile = np.tile(self.img_left, (num, 1,1,1))
+            left_next_tile = np.tile(self.img_left_next, (num, 1,1,1))
+            self.batch_left = np.concatenate([self.batch_left,left_tile],axis=0)
+            self.batch_left_next = np.concatenate([self.batch_left_next,left_next_tile],axis=0)
+            self.test_num = self.test_num +1
+        else:
+            self.batch_left = np.concatenate([self.batch_left[1:,:,:,:],self.img_left],axis=0)
+            self.batch_left_next = np.concatenate([self.batch_left_next[1:,:,:,:],self.img_left_next],axis=0)
+
         """Test function."""
-        [tran, rot] = self.sess.run([self.model.tran_est, self.model.rot_est], feed_dict={self.model.img_cur: self.img_left, self.model.img_next: self.img_left_next})
+        [tran, rot] = self.sess.run([self.model.tran_est, self.model.rot_est], feed_dict={self.model.img_cur: self.batch_left, self.model.img_next: self.batch_left_next})
 
 
         #Publish R and t
         print("publish R and t")
-        tran = tran.squeeze()
-        rot  = rot.squeeze()
+        tran = tran[self.test_num-1,:].squeeze()
+        rot  = rot[self.test_num-1,:].squeeze()
         print(tran)
         print(rot)
         br = ros_tf.TransformBroadcaster()
