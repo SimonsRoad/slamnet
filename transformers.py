@@ -1,4 +1,5 @@
 from __future__ import absolute_import, division, print_function
+import numpy as np
 import tensorflow as tf
 from keras.layers import Lambda
 from keras.layers import concatenate
@@ -45,13 +46,6 @@ def matrix_to_rpy(R):
         y = tf.zeros([],tf.float32)
         return r, p ,y
 
-
-#    pred = tf.less(sy,1e-6)
-#    r = Lambda( lambda x: tf.cond(x[0], lambda: tf.atan2(x[3],x[4]), lambda: tf.atan2(-x[2], x[1])) )([pred, R[:,1,1],R[:,1,2],R[:,2,1],R[:,2,2]])
-#    p = tf.atan2(-R[:,2,0], sy)
-#    y = Lambda( lambda x: tf.cond(x[0], lambda: tf.atan2(x[2],x[1]), lambda: tf.zeros([1],tf.float32)) )([pred, R[:,0,0],R[:,1,0]])
-    
-
     res_r = tf.zeros([1,1],tf.float32)
     res_p = tf.zeros([1,1],tf.float32)
     res_y = tf.zeros([1,1],tf.float32)
@@ -91,4 +85,59 @@ def decompose_matrix(M):
     r,p,y = matrix_to_rpy(M[:,:3,:3])
     rot = concatenate([r,p,y],axis=1)
     trans = M[:,:3,3]
+    return rot, trans
+
+def np_rpy_to_matrix(r, p, y):
+
+    yawMatrix = [np.cos(y), -np.sin(y), 0,
+    np.sin(y), np.cos(y), 0,
+    0, 0, 1]
+    yawMatrix = np.reshape(yawMatrix, [3, 3])
+
+    pitchMatrix = [np.cos(p), 0, np.sin(p),
+    0, 1, 0,
+    -np.sin(p), 0, np.cos(p)]
+    pitchMatrix = np.reshape(pitchMatrix, [3, 3])
+
+    rollMatrix = [1,0, 0,
+    0, np.cos(r), -np.sin(r),
+    0, np.sin(r), np.cos(r)]
+    rollMatrix = np.reshape(rollMatrix, [3, 3])
+
+    R = np.matmul(np.matmul(yawMatrix, pitchMatrix), rollMatrix)
+    return R
+
+def np_matrix_to_rpy(R):
+
+
+    sy = np.sqrt(np.square(R[0,0])+np.square(R[1,0]))
+
+    if sy<1e-6:
+        r = np.arctan2(-R[1,2], R[1,1])
+        p = np.arctan2(-R[2,0], sy)
+        y = 0
+    else:
+        r = np.arctan2(R[2,1],R[2,2])
+        p = np.arctan2(-R[2,0],sy)
+        y = np.arctan2(R[1,0],R[0,0]) 
+
+    return r,p,y
+
+def np_compose_matrix(rot, trans): 
+
+    zero_one = np.array([[0,0,0,1]])
+
+    R = np_rpy_to_matrix(rot[0],rot[1],rot[2])
+    trans = np.expand_dims(trans,1)
+
+    M = np.concatenate([R,trans],axis=1)
+    M = np.concatenate([M,zero_one], axis=0)
+
+    return M
+
+def np_decompose_matrix(M):
+
+    r,p,y = np_matrix_to_rpy(M[:3,:3])
+    rot = np.array([r,p,y])
+    trans = M[:3,3]
     return rot, trans

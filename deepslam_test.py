@@ -24,7 +24,7 @@ from cv_bridge import CvBridge, CvBridgeError
 
 from deepslam_model import *
 from deepslam_dataloader import *
-#from average_gradients import *
+from transformers import *
 
 parser = argparse.ArgumentParser(description='deepslam TensorFlow implementation.')
 
@@ -136,27 +136,48 @@ class deepslam:
             left_next_tile = np.tile(self.img_left_next, (num, 1,1,1))
             self.batch_left = np.concatenate([self.batch_left,left_tile],axis=0)
             self.batch_left_next = np.concatenate([self.batch_left_next,left_next_tile],axis=0)
-            self.test_num = self.test_num +1
         else:
             self.batch_left = np.concatenate([self.batch_left[1:,:,:,:],self.img_left],axis=0)
             self.batch_left_next = np.concatenate([self.batch_left_next[1:,:,:,:],self.img_left_next],axis=0)
 
         """Test function."""
-        [tran, rot] = self.sess.run([self.model.tran_est, self.model.rot_est], feed_dict={self.model.img_cur: self.batch_left, self.model.img_next: self.batch_left_next})
+        [tran_ori, rot_ori] = self.sess.run([self.model.tran_est, self.model.rot_est], feed_dict={self.model.img_cur: self.batch_left, self.model.img_next: self.batch_left_next})
 
 
         #Publish R and t
         print("publish R and t")
-        tran = tran[self.test_num-1,:].squeeze()
-        rot  = rot[self.test_num-1,:].squeeze()
+        if self.test_num<10:
+            tran = tran_ori[self.test_num,:]
+            rot  = rot_ori[self.test_num,:]
+            self.tran_prev = tran_ori[0,:]
+            self.rot_prev = rot_ori[0,:]
+        else:
+            tran = tran_ori[9,:]
+            rot  = rot_ori[9,:]
+            M_prev = np_compose_matrix(self.rot_prev,self.tran_prev)
+            M_next = np_compose_matrix(rot,tran)
+            M = np.matmul(M_prev,M_next)
+            rot,tran = np_decompose_matrix(M)
+
+            M_cur  = np_compose_matrix(rot_ori[0,:],tran_ori[0,:])
+            M_tmp  = np.matmul(M_prev,M_cur)
+            self.rot_prev,self.tran_prev = np_decompose_matrix(M_tmp)
+            
         print(tran)
         print(rot)
+
+        tran = tran.squeeze()
+        rot  = rot.squeeze()
+        
+
         br = ros_tf.TransformBroadcaster()
         br.sendTransform(tran,
                          ros_tf.transformations.quaternion_from_euler(rot[0],rot[1],rot[2]),
                          rospy.Time.now(),
                          "/undeepvo/Current",
                          "/undeepvo/World")
+
+        self.test_num = self.test_num +1
 
 
 def main(_):
