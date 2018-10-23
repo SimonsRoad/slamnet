@@ -362,14 +362,7 @@ class DeepslamModel(object):
 
             # Generate poses
             M_est, M_delta_est = self.compute_SE3_estimates()
-            M_gt, M_delta  = self.compute_SE3_gt()#compose_matrix(self.poses_next[:,:3],self.poses_next[:,3:])
-
-#            # Compute delta dists
-#            r,t = decompose_matrix(tf.matmul(tf.matrix_inverse(M_delta),M_delta_est))
-#            dist_delta = concatenate([r,t],axis=1)
-#            dist_delta = tf.expand_dims(dist_delta,2)
-#            dist_delta_t = tf.transpose(dist_delta,perm=[0,2,1])
-#            self.dist_sum= tf.reduce_mean(tf.sqrt(tf.matmul(dist_delta_t,dist_delta)))
+            M_gt, M_delta  = self.compute_SE3_gt()
 
             # Compute dists
             r,t = decompose_matrix(tf.matmul(tf.matrix_inverse(M_gt),M_est))

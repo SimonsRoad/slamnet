@@ -56,19 +56,21 @@ class deepslam:
         self.is_left_in  = False
         self.is_start = False
         self.test_num = 0
+        self.num_th = 5
 
         '''Initialize network for the VO estimation'''
+        batch_num = 5
         params = deepslam_parameters(
             height=args.input_height,
             width=args.input_width,
-            batch_size=10,
-            sequence_size=10,
+            batch_size=batch_num,
+            sequence_size=batch_num,
             num_threads=1,
             num_epochs=1,
             full_summary=False)
 
-        left  = tf.placeholder(tf.float32, [10, args.input_height, args.input_width, 3])
-        left_next  = tf.placeholder(tf.float32, [10, args.input_height, args.input_width, 3])
+        left  = tf.placeholder(tf.float32, [batch_num, args.input_height, args.input_width, 3])
+        left_next  = tf.placeholder(tf.float32, [batch_num, args.input_height, args.input_width, 3])
         self.model = DeepslamModel(params, "test", left, left_next, None, None)
 
         # SESSION
@@ -113,7 +115,7 @@ class deepslam:
         "Check new sequence is comming"
         if self.is_start == True:
             if self.is_left_in == True:
-                self.test_simple()
+                self.test_multiple()
                 self.is_left_in = False
         else: 
             if self.is_left_in == True:
@@ -123,6 +125,32 @@ class deepslam:
 
     def test_simple(self):
 
+        """Test function."""
+        [tran, rot] = self.sess.run([self.model.tran_est, self.model.rot_est], feed_dict={self.model.img_cur: self.img_left, self.model.img_next: self.img_left_next})
+
+
+        #Publish R and t
+        print("publish R and t")
+            
+        print(tran)
+        print(rot)
+
+        tran = tran.squeeze()
+        rot  = rot.squeeze()
+        
+
+        br = ros_tf.TransformBroadcaster()
+        br.sendTransform(tran,
+                         ros_tf.transformations.quaternion_from_euler(rot[0],rot[1],rot[2]),
+                         rospy.Time.now(),
+                         "/undeepvo/Current",
+                         "/undeepvo/World")
+
+        self.test_num = self.test_num +1
+
+
+    def test_multiple(self):
+
         if self.test_num == 0:
             self.batch_left = self.img_left
             self.batch_left_next = self.img_left_next
@@ -130,8 +158,8 @@ class deepslam:
             self.batch_left = self.batch_left[:self.test_num+1,:,:,:]
             self.batch_left_next = self.batch_left_next[:self.test_num+1,:,:,:]
 
-        if self.test_num<10:
-            num = 9 - self.test_num
+        if self.test_num<self.num_th:
+            num = self.num_th -1 - self.test_num
             left_tile = np.tile(self.img_left, (num, 1,1,1))
             left_next_tile = np.tile(self.img_left_next, (num, 1,1,1))
             self.batch_left = np.concatenate([self.batch_left,left_tile],axis=0)
@@ -146,14 +174,29 @@ class deepslam:
 
         #Publish R and t
         print("publish R and t")
-        if self.test_num<10:
+        if self.test_num<self.num_th:
             tran = tran_ori[self.test_num,:]
             rot  = rot_ori[self.test_num,:]
+#            if self.test_num>0:
+#                tran_prev = tran_ori[self.test_num-1,:]
+#                rot_prev  = rot_ori[self.test_num-1,:]
+#                M_prev = np_compose_matrix(rot_prev,tran_prev)
+#                M_cur = np_compose_matrix(rot,tran)
+#                M = np.matmul(np.linalg.inv(M_prev),M_cur)
+#                rot,tran = np_decompose_matrix(M)
+
             self.tran_prev = tran_ori[0,:]
             self.rot_prev = rot_ori[0,:]
         else:
-            tran = tran_ori[9,:]
-            rot  = rot_ori[9,:]
+            tran = tran_ori[self.num_th-1,:]
+            rot  = rot_ori[self.num_th-1,:]
+#            tran_prev = tran_ori[self.num_th-2,:]
+#            rot_prev  = rot_ori[self.num_th-2,:]
+#            M_prev = np_compose_matrix(rot_prev,tran_prev)
+#            M_cur = np_compose_matrix(rot,tran)
+#            M = np.matmul(np.linalg.inv(M_prev),M_cur)
+#            rot,tran = np_decompose_matrix(M)
+
             M_prev = np_compose_matrix(self.rot_prev,self.tran_prev)
             M_next = np_compose_matrix(rot,tran)
             M = np.matmul(M_prev,M_next)
@@ -178,7 +221,6 @@ class deepslam:
                          "/undeepvo/World")
 
         self.test_num = self.test_num +1
-
 
 def main(_):
 

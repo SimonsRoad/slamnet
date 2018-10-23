@@ -36,6 +36,7 @@ rot_odo = [];
 rot_est = [];
 tran_odo = [];
 tran_est = [];
+len = [];
 for iter=1:N
     % error matrices
     tmp_gt = gt_poses((iter-1)*3+1:iter*3,:);
@@ -51,6 +52,16 @@ for iter=1:N
     rot_est=[rot_est;trace(error_est(1:3,1:3))];
     %translational error 
     tran_est=[tran_est;error_est(1:3,4)'];
+
+    if(iter>1)
+        delta = pinv(prev_gt)*tmp_gt;
+        len_prev = len_prev + delta(1:3,4)'*delta(1:3,4)
+        len = [len,len_prev];
+    else
+        len_prev = 0;
+        len = [len,0];
+    end
+    prev_gt = tmp_gt;
 end
 
 %% plot results
@@ -59,10 +70,9 @@ tran_error_est = zeros(8,1);
 lengths = [100.0,200.0,300.0,400.0,500.0,600.0,700.0,800.0];
 count = 1;
 for iter=1:N
-    len = sqrt(tran_gt(iter,:)*tran_gt(iter,:)');
-    if len>lengths(count)
-        rot_error_est(count) = rad2deg(real(acos((rot_est(iter,:)-1)/2)))/len;
-        tran_error_est(count) = sqrt(tran_est(iter,:)*tran_est(iter,:)')/len;
+    if len(iter)>lengths(count)
+        rot_error_est(count) = rad2deg(real(acos((rot_est(iter,:)-1)/2)))/len(iter);
+        tran_error_est(count) = sqrt(tran_est(iter,:)*tran_est(iter,:)')/len(iter);
         count = count+1;
     end
 end

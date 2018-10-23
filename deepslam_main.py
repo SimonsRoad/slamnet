@@ -28,9 +28,9 @@ parser.add_argument('--filenames_file',            type=str,   help='path to the
 parser.add_argument('--input_height',              type=int,   help='input height', default=256)
 parser.add_argument('--input_width',               type=int,   help='input width', default=512)
 
-parser.add_argument('--batch_size',                type=int,   help='batch size', default=10)
-parser.add_argument('--num_epochs',                type=int,   help='number of epochs', default=100)
-parser.add_argument('--sequence_size',             type=int,   help='size of sequence', default=10)
+parser.add_argument('--batch_size',                type=int,   help='batch size', default=5)
+parser.add_argument('--num_epochs',                type=int,   help='number of epochs', default=30)
+parser.add_argument('--sequence_size',             type=int,   help='size of sequence', default=5)
 parser.add_argument('--learning_rate',             type=float, help='initial learning rate', default=1e-5)
 
 parser.add_argument('--num_gpus',                  type=int,   help='number of GPUs to use for training', default=1)
@@ -121,7 +121,7 @@ def train(params):
                     reuse_variables = True
 
                     if args.vo_checkpoint_path != '':
-                        train_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='slam_model')
+                        train_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='slam_model') + tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='pose_model')
                         grads = opt_step.compute_gradients(loss,var_list=train_vars)
                     else:
                         grads = opt_step.compute_gradients(loss)
@@ -205,7 +205,7 @@ def train(params):
                 training_time_left = (num_total_steps / step - 1.0) * time_sofar
                 print_string = 'batch {:>6} | examples/s: {:4.2f} | loss: {:.5f} | time elapsed: {:.2f}h | time left: {:.2f}h'
                 print(print_string.format(step, examples_per_sec, loss_value, time_sofar, training_time_left))
-            if step and (step+1) % (steps_per_epoch*10) == 0:
+            if step and (step+1) % (steps_per_epoch*5) == 0:
                 train_saver.save(sess, args.log_directory + '/' + args.model_name + '/model', global_step=step)
 
         train_saver.save(sess, args.log_directory + '/' + args.model_name + '/model', global_step=step)
