@@ -312,11 +312,24 @@ class DeepslamModel(object):
         self.img_base = tf.tile(self.img_cur[:1,:,:,:], [self.params.batch_size,1,1,1])
         self.depthmap_base = tf.tile(self.depthmap1[0][:1,:,:,:], [self.params.batch_size,1,1,1])
 
+#        # create acc_rot & acc_tran
+#        M_delta = compose_matrix(self.rot_est,self.tran_est)
+#        for i in range(self.params.batch_size):
+#            if i==0:
+#                est = M_delta[0:1,:,:]
+#                M_est = est
+#            else:
+#                est = tf.matmul(est,M_delta[i:i+1,:,:])
+#                M_est = concatenate([M_est,est],axis=0)
+#        self.acc_rot,self.acc_tran = decompose_matrix(M_est)
+
         # generate k+1 th image
+#        self.plus0 = projective_transformer(self.img_cur, self.focal_length1, self.focal_length2, self.c0, self.c1, self.depthmap_base, self.rot_est, self.tran_est)
         self.plus1 = projective_transformer(self.img_base, self.focal_length1, self.focal_length2, self.c0, self.c1, self.depthmap_base, self.rot_est, self.tran_est)
 
-        # generate k-1 th image
-        self.minus1 = projective_transformer_inv(self.img_next, self.focal_length1, self.focal_length2, self.c0, self.c1, self.depthmap2[0], self.rot_est, self.tran_est)
+#        # generate k-1 th image
+#        self.minus0 = projective_transformer(self.img_next, self.focal_length1, self.focal_length2, self.c0, self.c1, self.depthmap_base, self.rot_est, self.tran_est)
+#        self.minus1 = projective_transformer_inv(self.img_next, self.focal_length1, self.focal_length2, self.c0, self.c1, self.depthmap2[0], self.acc_rot, self.acc_tran)
 
 
     def compute_temporal_loss(self, img_syn, img, uncertainty):
@@ -336,29 +349,32 @@ class DeepslamModel(object):
         res_uncertainty = tf.matmul(tf.matmul(diffs_part_t,self.Q),diffs_part)
 
         res_u_norm = tf.norm(res_uncertainty,axis=[1,2])
-        res_u_norm = Lambda(lambda x: 0.01 + x)(res_u_norm)
-        res_u_plus = Lambda(lambda x: 1.0 + x)(res_u_norm)
+#        res_u_norm = Lambda(lambda x: 0.01 + x)(res_u_norm)
+#        res_u_plus = Lambda(lambda x: 1.0 + x)(res_u_norm)
 
         # dist
         diffs = tf.reduce_mean(tf.reshape(tf.square(img_syn[0] - img),[self.params.batch_size,-1]),1)
-        dist = tf.divide(diffs, res_u_norm) + tf.log(res_u_plus)
+        dist = tf.divide(diffs, res_u_norm) + tf.log(res_u_norm)
 
         return tf.reduce_mean(dist)
 
     def build_losses(self):
         
         # PHOTOMETRIC REGISTRATION (temporal loss)
-        self.l1_plus = self.compute_temporal_loss(self.plus1, self.img_next, self.unc_est) 
-        self.l1_minus = self.compute_temporal_loss(self.minus1, self.img_base,self.unc_est) 
-        self.total_loss = self.l1_plus + self.l1_minus
-        self.poses_txt = self.l1_plus
+#        self.l1_plus0 = self.compute_temporal_loss(self.plus0, self.img_next, self.unc_est) 
+#        self.l1_minus0 = self.compute_temporal_loss(self.minus0, self.img_cur,self.unc_est)
+        self.l1_plus1 = self.compute_temporal_loss(self.plus1, self.img_next, self.unc_est) 
+#        self.l1_minus1 = self.compute_temporal_loss(self.minus1, self.img_base,self.unc_est)  
+#        self.total_loss = self.l1_plus0 #+ self.l1_minus0 #+ self.l1_plus1 + self.l1_minus1
+        self.total_loss = self.l1_plus1
+        self.poses_txt = self.l1_plus1
 
     def build_summaries(self):
         # SUMMARIES
         with tf.device('/cpu:0'):
 #            tf.summary.scalar('mean_dist', self.dist_sum, collections=self.model_collection)
             tf.summary.image('img_cur', self.img_cur,  max_outputs=3, collections=self.model_collection)
-            tf.summary.image('img_next',  self.img_next,   max_outputs=3, collections=self.model_collection)
+#            tf.summary.image('img_next',  self.img_next,   max_outputs=3, collections=self.model_collection)
             tf.summary.image('img_syn',  self.plus1[0],   max_outputs=3, collections=self.model_collection)
 
             txtPredictions = tf.Print(tf.as_string(self.Q),[tf.as_string(self.Q)], message='predictions', name='txtPredictions')
