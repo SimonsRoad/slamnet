@@ -57,6 +57,8 @@ for dnum=1:numel(data_num)
         fprintf(save_fid, '%f %f %f ', prev_tran(1), prev_tran(2), prev_tran(3));       
         fprintf(save_fid, '%f %f %f ', cur_rot(1), cur_rot(2), cur_rot(3));
         fprintf(save_fid, '%f %f %f ', cur_tran(1), cur_tran(2), cur_tran(3));
+        fprintf(save_fid, '%f %f %f ', left_focal_length(dnum), left_c0(dnum), left_c1(dnum));
+        fprintf(save_fid, '%f %f %f ', base_line(dnum), image_dims(1,dnum), image_dims(2,dnum));
         fprintf(save_fid, '\n');
         prev_tran = cur_tran;
         prev_rot  = cur_rot;

@@ -14,7 +14,7 @@ import tensorflow as tf
 import tensorflow.contrib.slim as slim
 from keras import backend as K
 
-from deepslam_model import *
+from undeepslam_model import *
 from deepslam_dataloader import *
 from average_gradients import *
 
@@ -31,7 +31,7 @@ parser.add_argument('--input_width',               type=int,   help='input width
 parser.add_argument('--batch_size',                type=int,   help='batch size', default=5)
 parser.add_argument('--num_epochs',                type=int,   help='number of epochs', default=30)
 parser.add_argument('--sequence_size',             type=int,   help='size of sequence', default=5)
-parser.add_argument('--learning_rate',             type=float, help='initial learning rate', default=1e-5)
+parser.add_argument('--learning_rate',             type=float, help='initial learning rate', default=1e-4)
 
 parser.add_argument('--num_gpus',                  type=int,   help='number of GPUs to use for training', default=1)
 parser.add_argument('--num_threads',               type=int,   help='number of threads to use for data loading', default=8)
@@ -93,18 +93,20 @@ def train(params):
         dataloader = DeepslamDataloader(args.data_path, args.filenames_file, params, args.mode)
         dataset = dataloader.dataset
         iterator = dataset.make_initializable_iterator()
-        image, next_image, poses, next_poses = iterator.get_next()
+        image, next_image, poses, next_poses, cam_params = iterator.get_next()
         init_op = iterator.initializer
         image.set_shape( [params.batch_size, params.height, params.width, 3])
         next_image.set_shape( [params.batch_size,params.height, params.width, 3])
         poses.set_shape( [params.batch_size,6]) 
         next_poses.set_shape( [params.batch_size,6])   
+        cam_params.set_shape( [params.batch_size,6])
 
         # split for each gpu
         image_splits  = tf.split(image,  args.num_gpus, 0)
         next_image_splits = tf.split(next_image, args.num_gpus, 0)
         poses_splits = tf.split(poses, args.num_gpus, 0)
         next_poses_splits = tf.split(next_poses, args.num_gpus, 0)
+        cam_params_splits = tf.split(cam_params, args.num_gpus, 0)
 
         tower_grads  = []
         tower_losses = []
@@ -113,7 +115,7 @@ def train(params):
             for i in range(args.num_gpus):
                 with tf.device('/gpu:%d' % i):
 
-                    model = DeepslamModel(params, args.mode, image_splits[i], next_image_splits[i], poses_splits[i], next_poses_splits[i], reuse_variables, i)
+                    model = DeepslamModel(params, args.mode, image_splits[i], next_image_splits[i], poses_splits[i], next_poses_splits[i], cam_params_splits[i], reuse_variables, i)
 
                     loss = model.total_loss
                     tower_losses.append(loss)
@@ -171,9 +173,7 @@ def train(params):
 
             if args.retrain:
                 sess.run(global_step.assign(0))
-        
-        # SET COUNTS
-#        iterations_for_seq = np.ceil(params.sequence_size/params.batch_size).astype(np.int32)
+
 
         # GO!
         start_step = global_step.eval(session=sess)
@@ -183,10 +183,6 @@ def train(params):
             idx = step % steps_per_epoch
             if idx ==0:
                 sess.run(init_op)
-#                model.slam_model.reset_states()  
-#            else:
-#                if seq_per_epoch[idx-1] != seq_per_epoch[idx]:
-#                    model.slam_model.reset_states()
 
             model.slam_model.reset_states()  
 
@@ -213,53 +209,6 @@ def train(params):
 def test(params):
     """Test function."""
 
-#    dataloader = MonodepthDataloader(args.data_path, args.filenames_file, params, args.dataset, args.mode)
-#    left  = dataloader.left_image_batch
-#    right = dataloader.right_image_batch
-
-#    model = DeepslamModel(params, args.mode, left, right)
-
-#    # SESSION
-#    config = tf.ConfigProto(allow_soft_placement=True)
-#    sess = tf.Session(config=config)
-
-#    # SAVER
-#    train_saver = tf.train.Saver()
-
-#    # INIT
-#    sess.run(tf.global_variables_initializer())
-#    sess.run(tf.local_variables_initializer())
-#    coordinator = tf.train.Coordinator()
-#    threads = tf.train.start_queue_runners(sess=sess, coord=coordinator)
-
-#    # RESTORE
-#    if args.checkpoint_path == '':
-#        restore_path = tf.train.latest_checkpoint(args.log_directory + '/' + args.model_name)
-#    else:
-#        restore_path = args.checkpoint_path.split(".")[0]
-#    train_saver.restore(sess, restore_path)
-
-#    num_test_samples = count_text_lines(args.filenames_file)
-
-#    print('now testing {} files'.format(num_test_samples))
-#    disparities    = np.zeros((num_test_samples, params.height, params.width), dtype=np.float32)
-#    disparities_pp = np.zeros((num_test_samples, params.height, params.width), dtype=np.float32)
-#    for step in range(num_test_samples):
-#        disp = sess.run(model.disp_left_est[0])
-#        disparities[step] = disp[0].squeeze()
-#        disparities_pp[step] = post_process_disparity(disp.squeeze())
-
-#    print('done.')
-
-#    print('writing disparities.')
-#    if args.output_directory == '':
-#        output_directory = os.path.dirname(args.checkpoint_path)
-#    else:
-#        output_directory = args.output_directory
-#    np.save(output_directory + '/disparities.npy',    disparities)
-#    np.save(output_directory + '/disparities_pp.npy', disparities_pp)
-
-#    print('done.')
 
 def main(_):
 
