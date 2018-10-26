@@ -29,7 +29,7 @@ parser.add_argument('--input_height',              type=int,   help='input heigh
 parser.add_argument('--input_width',               type=int,   help='input width', default=512)
 
 parser.add_argument('--batch_size',                type=int,   help='batch size', default=5)
-parser.add_argument('--num_epochs',                type=int,   help='number of epochs', default=30)
+parser.add_argument('--num_epochs',                type=int,   help='number of epochs', default=100)
 parser.add_argument('--sequence_size',             type=int,   help='size of sequence', default=5)
 parser.add_argument('--learning_rate',             type=float, help='initial learning rate', default=1e-4)
 
@@ -124,6 +124,7 @@ def train(params):
 
                     if args.vo_checkpoint_path != '':
                         train_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='slam_model') #+ tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='pose_model')
+#                        train_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='pose_model')
                         grads = opt_step.compute_gradients(loss,var_list=train_vars)
                     else:
                         grads = opt_step.compute_gradients(loss)

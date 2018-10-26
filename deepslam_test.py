@@ -22,7 +22,7 @@ from std_msgs.msg import String
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge, CvBridgeError
 
-from deepslam_model import *
+from undeepslam_model import *
 from deepslam_dataloader import *
 from transformers import *
 
@@ -71,7 +71,7 @@ class deepslam:
 
         left  = tf.placeholder(tf.float32, [batch_num, args.input_height, args.input_width, 3])
         left_next  = tf.placeholder(tf.float32, [batch_num, args.input_height, args.input_width, 3])
-        self.model = DeepslamModel(params, "test", left, left_next, None, None)
+        self.model = DeepslamModel(params, "test", left, left_next, None, None, None)
 
         # SESSION
         config = tf.ConfigProto(allow_soft_placement=True)
