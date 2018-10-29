@@ -164,7 +164,7 @@ def train(params):
 
         # LOAD CHECKPOINT IF SET
         if args.vo_checkpoint_path != '':
-            fix_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='pose_model')
+            fix_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='pose_model') + tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='depth_model')
             loader = tf.train.Saver(fix_vars)
             loader.restore(sess, args.vo_checkpoint_path)
 
