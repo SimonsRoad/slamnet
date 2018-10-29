@@ -123,7 +123,7 @@ def train(params):
                     reuse_variables = True
 
                     if args.vo_checkpoint_path != '':
-                        train_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='slam_model') #+ tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='pose_model')
+                        train_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='slam_model') + tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='pose_model')
 #                        train_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='pose_model')
                         grads = opt_step.compute_gradients(loss,var_list=train_vars)
                     else:

@@ -317,19 +317,19 @@ class DeepslamModel(object):
         self.depthmap_base = tf.tile(self.depthmap1[0][:1,:,:,:], [self.params.batch_size,1,1,1])
 
 
-        # create rot_part & tran_part
-        M = compose_matrix(self.rot_est,self.tran_est)
-        for i in range(self.params.batch_size):
-            if i==0:
-                est = M[0:1,:,:]
-                M_est = est
-            else:
-                est = tf.matmul(tf.matrix_inverse(M[i-1:i,:,:]),M[i:i+1,:,:])
-                M_est = concatenate([M_est,est],axis=0)
-        self.rot_part,self.tran_part = decompose_matrix(M_est)
+#        # create rot_part & tran_part
+#        M = compose_matrix(self.rot_est,self.tran_est)
+#        for i in range(self.params.batch_size):
+#            if i==0:
+#                est = M[0:1,:,:]
+#                M_est = est
+#            else:
+#                est = tf.matmul(tf.matrix_inverse(M[i-1:i,:,:]),M[i:i+1,:,:])
+#                M_est = concatenate([M_est,est],axis=0)
+#        self.rot_part,self.tran_part = decompose_matrix(M_est)
 
         # generate k+1 th image
-        self.plus0 = projective_transformer(self.img_cur, self.focal_length1, self.focal_length2, self.c0, self.c1, self.depthmap1[0], self.rot_part, self.tran_part)
+        self.plus0 = projective_transformer(self.img_cur, self.focal_length1, self.focal_length2, self.c0, self.c1, self.depthmap1[0], self.rot, self.tran)
         self.plus1 = projective_transformer(self.img_base, self.focal_length1, self.focal_length2, self.c0, self.c1, self.depthmap_base, self.rot_est, self.tran_est)
 
 #        # generate k-1 th image
