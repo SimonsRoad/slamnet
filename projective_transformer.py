@@ -173,7 +173,7 @@ def projective_transformer(input_images, f0, f1, c0, c1, depthmap, rotation, tra
             images_z = _transform_with_Rt(input_images, R_mat, t_mat, xyz, f0, c0, f1, c1)
 
             # transform to new image plan (roll transform)
-            roll = rotation[:,0] + 0.01*rt_ones
+            roll = rotation[:,0] + 0.1*rt_ones
             pitch = rotation[:,1]
             yaw = rotation[:,2]
             R_mat = _rpy_to_mat(roll,pitch,yaw)
@@ -186,7 +186,7 @@ def projective_transformer(input_images, f0, f1, c0, c1, depthmap, rotation, tra
 
             # transform to new image plan (pitch transform)
             roll = rotation[:,0] 
-            pitch = rotation[:,1] + 0.01*rt_ones
+            pitch = rotation[:,1] + 0.1*rt_ones
             yaw = rotation[:,2]
             R_mat = _rpy_to_mat(roll,pitch,yaw)
 
@@ -195,7 +195,7 @@ def projective_transformer(input_images, f0, f1, c0, c1, depthmap, rotation, tra
             # transform to new image plan (yaw transform)
             roll = rotation[:,0] 
             pitch = rotation[:,1]
-            yaw = rotation[:,2] + 0.01*rt_ones
+            yaw = rotation[:,2] + 0.1*rt_ones
             R_mat = _rpy_to_mat(roll,pitch,yaw)
 
             images_yaw = _transform_with_Rt(input_images, R_mat, t_mat, xyz, f0, c0, f1, c1)

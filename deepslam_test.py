@@ -126,7 +126,7 @@ class deepslam:
     def test_simple(self):
 
         """Test function."""
-        [tran, rot] = self.sess.run([self.model.tran_est, self.model.rot_est], feed_dict={self.model.img_cur: self.img_left, self.model.img_next: self.img_left_next})
+        [tran, rot] = self.sess.run([self.model.tran, self.model.rot], feed_dict={self.model.img_cur: self.img_left, self.model.img_next: self.img_left_next})
 
 
         #Publish R and t

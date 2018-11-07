@@ -4,7 +4,7 @@ clc;
 N = 100000;
 
 %% read results
-fid = fopen('./kitti09/GT_poses.txt', 'r');
+fid = fopen('./kitti10_slam/GT_poses.txt', 'r');
 gt_poses = [];
 for iter=1:N
     oneline = fgetl(fid);
@@ -17,7 +17,7 @@ for iter=1:N
 end
 fclose(fid);
 
-fid = fopen('./kitti09/EST_poses.txt', 'r');
+fid = fopen('./kitti10_slam/VO_poses.txt', 'r');
 est_poses = [];
 for iter=1:N
     oneline = fgetl(fid);
@@ -37,6 +37,7 @@ rot_est = [];
 tran_odo = [];
 tran_est = [];
 len = [];
+tran_gt = [];
 for iter=1:N
     % error matrices
     tmp_gt = gt_poses((iter-1)*3+1:iter*3,:);
@@ -55,7 +56,7 @@ for iter=1:N
 
     if(iter>1)
         delta = pinv(prev_gt)*tmp_gt;
-        len_prev = len_prev + delta(1:3,4)'*delta(1:3,4)
+        len_prev = len_prev + delta(1:3,4)'*delta(1:3,4);
         len = [len,len_prev];
     else
         len_prev = 0;

@@ -316,24 +316,23 @@ class DeepslamModel(object):
         self.img_base = tf.tile(self.img_cur[:1,:,:,:], [self.params.batch_size,1,1,1])
         self.depthmap_base = tf.tile(self.depthmap1[0][:1,:,:,:], [self.params.batch_size,1,1,1])
 
-
-#        # create rot_part & tran_part
-#        M = compose_matrix(self.rot_est,self.tran_est)
-#        for i in range(self.params.batch_size):
-#            if i==0:
-#                est = M[0:1,:,:]
-#                M_est = est
-#            else:
-#                est = tf.matmul(tf.matrix_inverse(M[i-1:i,:,:]),M[i:i+1,:,:])
-#                M_est = concatenate([M_est,est],axis=0)
-#        self.rot_part,self.tran_part = decompose_matrix(M_est)
+        # create rot_part & tran_part
+        M = compose_matrix(self.rot_est,self.tran_est)
+        for i in range(self.params.batch_size):
+            if i==0:
+                est = M[0:1,:,:]
+                M_est = est
+            else:
+                est = tf.matmul(tf.matrix_inverse(M[i-1:i,:,:]),M[i:i+1,:,:])
+                M_est = concatenate([M_est,est],axis=0)
+        self.rot_part,self.tran_part = decompose_matrix(M_est)
 
         # generate k+1 th image
         self.plus0 = projective_transformer(self.img_cur, self.focal_length1, self.focal_length2, self.c0, self.c1, self.depthmap1[0], self.rot, self.tran)
         self.plus1 = projective_transformer(self.img_base, self.focal_length1, self.focal_length2, self.c0, self.c1, self.depthmap_base, self.rot_est, self.tran_est)
-
-#        # generate k-1 th image
-#        self.minus0 = projective_transformer_inv(self.img_next, self.focal_length1, self.focal_length2, self.c0, self.c1, self.depthmap2[0], self.rot_part, self.tran_part)
+        self.plus2 = projective_transformer(self.img_cur, self.focal_length1, self.focal_length2, self.c0, self.c1, self.depthmap1[0], self.rot_part, self.tran_part)
+        # generate k-1 th image
+#        self.minus0 = projective_transformer_inv(self.img_next, self.focal_length1, self.focal_length2, self.c0, self.c1, self.depthmap2[0], self.rot, self.tran)
 #        self.minus1 = projective_transformer_inv(self.img_next, self.focal_length1, self.focal_length2, self.c0, self.c1, self.depthmap2[0], self.rot_est, self.tran_est)
 
 #        # create acc_rot & acc_tran
@@ -367,13 +366,13 @@ class DeepslamModel(object):
         img_diffs = [tf.reshape(tf.abs(img_syn[i] - img),[self.params.batch_size,-1]) for i in range(7)]
         res_diffs = [tf.reduce_mean(tf.abs(img_diffs[0]-img_diffs[i]),1) for i in range(7)]
 
-        diffs_part = tf.stack([10.0*res_diffs[1],10.0*res_diffs[2],10.0*res_diffs[3],100.0*res_diffs[4],100.0*res_diffs[5],100.0*res_diffs[6]], axis=1)
+        diffs_part = tf.stack([10.0*res_diffs[1],10.0*res_diffs[2],10.0*res_diffs[3],10.0*res_diffs[4],10.0*res_diffs[5],10.0*res_diffs[6]], axis=1)
         diffs_part = tf.expand_dims(diffs_part,2)
         diffs_part_t = tf.transpose(diffs_part,perm=[0, 2, 1])
         res_uncertainty = tf.matmul(tf.matmul(diffs_part_t,self.Q),diffs_part)
 
         res_u_norm = tf.norm(res_uncertainty,axis=[1,2])
-        res_u_norm = Lambda(lambda x: 0.01 + x)(res_u_norm)
+        res_u_norm = Lambda(lambda x: 0.000001 + x)(res_u_norm)
         res_u_plus = Lambda(lambda x: 1.0 + x)(res_u_norm)
 
         # dist
@@ -402,10 +401,11 @@ class DeepslamModel(object):
         
         # PHOTOMETRIC REGISTRATION (temporal loss)
         self.l1_plus0 = self.compute_temporal_loss(self.plus0, self.img_next, self.unc) 
+        self.l1_plus2 = self.compute_temporal_loss(self.plus2, self.img_next, self.unc) 
         self.l1_plus1 = self.compute_temporal_loss(self.plus1, self.img_next, self.unc_est)
 #        self.l1_minus0 = self.compute_temporal_loss(self.minus0, self.img_cur,self.unc) 
 #        self.l1_minus1 = self.compute_temporal_loss(self.minus1, self.img_base,self.unc_est)
-        self.total_loss = self.l1_plus0 + self.l1_plus1 #+ self.l1_minus0 + self.l1_minus1
+        self.total_loss = self.l1_plus0 + self.l1_plus1 + self.l1_plus2 
         self.poses_txt = concatenate([self.tran,self.tran_est],axis=0)
 
     def build_summaries(self):
