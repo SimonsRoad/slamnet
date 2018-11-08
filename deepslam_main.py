@@ -14,13 +14,16 @@ import tensorflow as tf
 import tensorflow.contrib.slim as slim
 from keras import backend as K
 
-from undeepslam_model import *
+from mapping_model import *
+from localization_model import *
+from deepslam_model import *
 from deepslam_dataloader import *
 from average_gradients import *
 
 parser = argparse.ArgumentParser(description='DeepSLAM TensorFlow implementation.')
 
 parser.add_argument('--mode',                      type=str,   help='train or test', default='train')
+parser.add_argument('--train_mode',                      type=str,   help='localization, mapping or slam', default='slam')
 parser.add_argument('--model_name',                type=str,   help='model name', default='deepslam')
 parser.add_argument('--data_path',                 type=str,   help='path to the data', required=True)
 parser.add_argument('--filenames_file',            type=str,   help='path to the filenames text file', required=True)
@@ -31,14 +34,14 @@ parser.add_argument('--input_width',               type=int,   help='input width
 parser.add_argument('--batch_size',                type=int,   help='batch size', default=5)
 parser.add_argument('--num_epochs',                type=int,   help='number of epochs', default=30)
 parser.add_argument('--sequence_size',             type=int,   help='size of sequence', default=5)
-parser.add_argument('--learning_rate',             type=float, help='initial learning rate', default=1e-5)
+parser.add_argument('--learning_rate',             type=float, help='initial learning rate', default=1e-4)
 
 parser.add_argument('--num_gpus',                  type=int,   help='number of GPUs to use for training', default=1)
 parser.add_argument('--num_threads',               type=int,   help='number of threads to use for data loading', default=8)
 
 parser.add_argument('--output_directory',          type=str,   help='output directory for test disparities, if empty outputs to checkpoint folder', default='')
 parser.add_argument('--log_directory',             type=str,   help='directory to save checkpoints and summaries', default='')
-parser.add_argument('--vo_checkpoint_path',        type=str,   help='path to a specific checkpoint to load', default='')
+parser.add_argument('--prev_checkpoint_path',        type=str,   help='path to a specific checkpoint to load', default='')
 parser.add_argument('--checkpoint_path',           type=str,   help='path to a specific checkpoint to load', default='')
 parser.add_argument('--retrain',                               help='if used with checkpoint_path, will restart training from step zero', action='store_true')
 parser.add_argument('--full_summary',                          help='if set, will keep more data for each summary. Warning: the file can become very large', action='store_true')
@@ -114,17 +117,28 @@ def train(params):
         with tf.variable_scope(tf.get_variable_scope()):
             for i in range(args.num_gpus):
                 with tf.device('/gpu:%d' % i):
-
-                    model = DeepslamModel(params, args.mode, image_splits[i], next_image_splits[i], poses_splits[i], next_poses_splits[i], cam_params_splits[i], reuse_variables, i)
+                    
+                    if args.train_mode == 'mapping':
+                        model = MappingModel(params, args.mode, image_splits[i], next_image_splits[i], poses_splits[i], next_poses_splits[i], cam_params_splits[i], reuse_variables, i)
+                    elif args.train_mode == 'localization':
+                        model = LocalizationModel(params, args.mode, image_splits[i], next_image_splits[i], poses_splits[i], next_poses_splits[i], cam_params_splits[i], reuse_variables, i)
+                    elif args.train_mode == 'slam':
+                        model = DeepslamModel(params, args.mode, image_splits[i], next_image_splits[i], poses_splits[i], next_poses_splits[i], cam_params_splits[i], reuse_variables, i)
 
                     loss = model.total_loss
                     tower_losses.append(loss)
 
                     reuse_variables = True
 
-                    if args.vo_checkpoint_path != '':
-                        train_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='slam_model') + tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='pose_model')
-#                        train_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='pose_model')
+                    if args.prev_checkpoint_path != '':
+                        
+                        if args.train_mode == 'mapping':
+                            train_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='mapping_model') + tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='depth_model')
+                        elif args.train_mode == 'localization':
+                            train_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='localization_model') + tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='pose_model')
+                        elif args.train_mode == 'slam':
+                            train_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='localization_model') + tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='mapping_model')
+
                         grads = opt_step.compute_gradients(loss,var_list=train_vars)
                     else:
                         grads = opt_step.compute_gradients(loss)
@@ -163,10 +177,16 @@ def train(params):
 
 
         # LOAD CHECKPOINT IF SET
-        if args.vo_checkpoint_path != '':
-            fix_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='pose_model') + tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='depth_model')
-            loader = tf.train.Saver(fix_vars)
-            loader.restore(sess, args.vo_checkpoint_path)
+        if args.prev_checkpoint_path != '':
+            if args.train_mode == 'mapping':
+                load_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='pose_model') + tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='depth_model') + tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='localization_model')
+            elif args.train_mode == 'localization':
+                load_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='pose_model') + tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='depth_model') + tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='mapping_model')
+            elif args.train_mode == 'slam':
+                load_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='pose_model') + tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='depth_model') + tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='mapping_model') + tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='localization_model')
+            
+            loader = tf.train.Saver(load_vars)
+            loader.restore(sess, args.prev_checkpoint_path)
 
         if args.checkpoint_path != '':
             restore_path = args.checkpoint_path.split(".")[0]
@@ -185,7 +205,7 @@ def train(params):
             if idx ==0:
                 sess.run(init_op)
 
-            model.slam_model.reset_states()  
+            model.localization_model.reset_states()  
 
 
             if step % 100 == 0:

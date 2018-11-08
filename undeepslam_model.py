@@ -39,7 +39,7 @@ class DeepslamModel(object):
 
         self.build_depth_architecture()
         self.build_pose_architecture()
-        self.build_slam_architecture()
+        self.build_localization_architecture()
 
         [self.depthmap1, self.depthmap2, self.tran, self.rot, self.unc, self.tran_est, self.rot_est, self.unc_est] = self.build_model(self.img_cur, self.img_next)
 
@@ -245,9 +245,9 @@ class DeepslamModel(object):
 
             self.pose_model = Model([input1,input2], [fc3_tran, fc3_rot, fc3_unc])
 
-    def build_slam_architecture(self):
+    def build_localization_architecture(self):
         
-        with tf.variable_scope('slam_model',reuse=self.reuse_variables):
+        with tf.variable_scope('localization_model',reuse=self.reuse_variables):
             input1 = Input(batch_shape=(self.rnn_batch_size,self.params.sequence_size,3))
 
             input2 = Input(batch_shape=(self.rnn_batch_size,self.params.sequence_size,3))
@@ -258,7 +258,7 @@ class DeepslamModel(object):
         
             lstm_1 = LSTM(1024, batch_input_shape = (self.rnn_batch_size,self.params.sequence_size,27), stateful=True, return_sequences=True)(input)
     
-            lstm_2 = LSTM(1024, stateful=True, return_sequences=True)(lstm_1)#batch_input_shape = (self.rnn_batch_size,self.params.sequence_size,27), 
+            lstm_2 = LSTM(1024, stateful=True, return_sequences=True)(lstm_1)
 
 
             fc1_tran = TimeDistributed(Dense(512, input_shape=(1024,), activation='relu'))(lstm_2)
@@ -279,7 +279,7 @@ class DeepslamModel(object):
 
             fc3_unc = TimeDistributed(Dense(21, input_shape=(128,)))(fc2_unc)
 
-            self.slam_model = Model([input1,input2,input3], [fc3_tran, fc3_rot, fc3_unc])
+            self.localization_model = Model([input1,input2,input3], [fc3_tran, fc3_rot, fc3_unc])
 
 
     def build_model(self,img1,img2):
@@ -299,7 +299,7 @@ class DeepslamModel(object):
             rot = tf.reshape(rot,[self.rnn_batch_size,self.params.sequence_size,3])
             unc = tf.reshape(unc,[self.rnn_batch_size,self.params.sequence_size,21])
 
-            [trans_est, rot_est, unc_est] = self.slam_model([trans,rot,unc])
+            [trans_est, rot_est, unc_est] = self.localization_model([trans,rot,unc])
 
             trans_est.set_shape(trans_est._keras_shape)
             rot_est.set_shape(rot_est._keras_shape)
@@ -327,14 +327,6 @@ class DeepslamModel(object):
                 M_est = concatenate([M_est,est],axis=0)
         self.rot_part,self.tran_part = decompose_matrix(M_est)
 
-        # generate k+1 th image
-        self.plus0 = projective_transformer(self.img_cur, self.focal_length1, self.focal_length2, self.c0, self.c1, self.depthmap1[0], self.rot, self.tran)
-        self.plus1 = projective_transformer(self.img_base, self.focal_length1, self.focal_length2, self.c0, self.c1, self.depthmap_base, self.rot_est, self.tran_est)
-        self.plus2 = projective_transformer(self.img_cur, self.focal_length1, self.focal_length2, self.c0, self.c1, self.depthmap1[0], self.rot_part, self.tran_part)
-        # generate k-1 th image
-#        self.minus0 = projective_transformer_inv(self.img_next, self.focal_length1, self.focal_length2, self.c0, self.c1, self.depthmap2[0], self.rot, self.tran)
-#        self.minus1 = projective_transformer_inv(self.img_next, self.focal_length1, self.focal_length2, self.c0, self.c1, self.depthmap2[0], self.rot_est, self.tran_est)
-
 #        # create acc_rot & acc_tran
 #        M_delta = compose_matrix(self.rot_est,self.tran_est)
 #        for i in range(self.params.batch_size):
@@ -346,13 +338,16 @@ class DeepslamModel(object):
 #                M_est = concatenate([M_est,est],axis=0)
 #        self.rot_acc,self.tran_acc = decompose_matrix(M_est)
 
-#        # generate k+1 th image
-#        self.plus0 = projective_transformer(self.img_cur, self.focal_length1, self.focal_length2, self.c0, self.c1, self.depthmap1[0], self.rot_est, self.tran_est)
-#        self.plus1 = projective_transformer(self.img_base, self.focal_length1, self.focal_length2, self.c0, self.c1, self.depthmap_base, self.rot_acc, self.tran_acc)
+        # generate k+1 th image
+        self.plus0 = projective_transformer(self.img_cur, self.focal_length1, self.focal_length2, self.c0, self.c1, self.depthmap2[0], self.rot, self.tran)
+        self.plus1 = projective_transformer(self.img_base, self.focal_length1, self.focal_length2, self.c0, self.c1, self.depthmap2[0], self.rot_est, self.tran_est)
+        self.plus2 = projective_transformer(self.img_cur, self.focal_length1, self.focal_length2, self.c0, self.c1, self.depthmap2[0], self.rot_part, self.tran_part)
 
-#        # generate k-1 th image
-#        self.minus0 = projective_transformer_inv(self.img_next, self.focal_length1, self.focal_length2, self.c0, self.c1, self.depthmap2[0], self.rot_est, self.tran_est)
-#        self.minus1 = projective_transformer_inv(self.img_next, self.focal_length1, self.focal_length2, self.c0, self.c1, self.depthmap2[0], self.rot_acc, self.tran_acc)
+        # generate k+1 th depth image
+        self.depthplus0 = projective_transformer(self.depthmap1[0], self.focal_length1, self.focal_length2, self.c0, self.c1, self.depthmap2[0], self.rot, self.tran)
+        self.depthplus1 = projective_transformer(self.depthmap_base, self.focal_length1, self.focal_length2, self.c0, self.c1, self.depthmap2[0], self.rot_est, self.tran_est)
+        self.depthplus2 = projective_transformer(self.depthmap1[0], self.focal_length1, self.focal_length2, self.c0, self.c1, self.depthmap2[0], self.rot_part, self.tran_part)
+
 
 
     def compute_temporal_loss(self, img_syn, img, uncertainty):
@@ -372,7 +367,7 @@ class DeepslamModel(object):
         res_uncertainty = tf.matmul(tf.matmul(diffs_part_t,self.Q),diffs_part)
 
         res_u_norm = tf.norm(res_uncertainty,axis=[1,2])
-        res_u_norm = Lambda(lambda x: 0.000001 + x)(res_u_norm)
+#        res_u_norm = Lambda(lambda x: 0.000001 + x)(res_u_norm)
         res_u_plus = Lambda(lambda x: 1.0 + x)(res_u_norm)
 
         # dist
@@ -403,19 +398,24 @@ class DeepslamModel(object):
         self.l1_plus0 = self.compute_temporal_loss(self.plus0, self.img_next, self.unc) 
         self.l1_plus2 = self.compute_temporal_loss(self.plus2, self.img_next, self.unc) 
         self.l1_plus1 = self.compute_temporal_loss(self.plus1, self.img_next, self.unc_est)
-#        self.l1_minus0 = self.compute_temporal_loss(self.minus0, self.img_cur,self.unc) 
-#        self.l1_minus1 = self.compute_temporal_loss(self.minus1, self.img_base,self.unc_est)
-        self.total_loss = self.l1_plus0 + self.l1_plus1 + self.l1_plus2 
+
+        self.l1_depthplus0 = self.compute_temporal_loss(self.depthplus0, self.depthmap2[0], self.unc) 
+        self.l1_depthplus2 = self.compute_temporal_loss(self.depthplus2, self.depthmap2[0], self.unc) 
+        self.l1_depthplus1 = self.compute_temporal_loss(self.depthplus1, self.depthmap2[0], self.unc_est)
+
+        self.image_loss_temporal = self.l1_plus0 + self.l1_plus1 + self.l1_plus2
+        self.depth_loss_temporal = self.l1_depthplus0 + self.l1_depthplus1 + self.l1_depthplus2
+        self.total_loss = self.image_loss_temporal + 0.1*self.depth_loss_temporal 
         self.poses_txt = concatenate([self.tran,self.tran_est],axis=0)
 
     def build_summaries(self):
         # SUMMARIES
         with tf.device('/cpu:0'):
-#            tf.summary.scalar('mean_dist', self.dist_sum, collections=self.model_collection)
-#            tf.summary.image('img_cur', self.img_cur,  max_outputs=3, collections=self.model_collection)
+            tf.summary.scalar('image_loss_temporal', self.image_loss_temporal, collections=self.model_collection)
+            tf.summary.scalar('depth_loss_temporal', self.depth_loss_temporal, collections=self.model_collection)
             tf.summary.image('img_next',  self.img_next,   max_outputs=3, collections=self.model_collection)
-#            tf.summary.image('depth',  self.depthmap1[0],   max_outputs=3, collections=self.model_collection)
-            tf.summary.image('plus0',  self.plus0[0],   max_outputs=3, collections=self.model_collection)
+            tf.summary.image('depth',  self.depthmap1[0],   max_outputs=3, collections=self.model_collection)
+            tf.summary.image('depthplus0',  self.depthplus0[0],   max_outputs=3, collections=self.model_collection)
             tf.summary.image('plus1',  self.plus1[0],   max_outputs=3, collections=self.model_collection)
 
             txtPredictions = tf.Print(tf.as_string(self.Q),[tf.as_string(self.Q)], message='predictions', name='txtPredictions')

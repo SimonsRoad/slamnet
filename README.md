@@ -5,8 +5,14 @@ run generate_train.m with matlab
 source ~/tensorflow/bin/activate 
 
 2. Training
-python deepslam_main.py --mode train --model_name deepslam_model --data_path /media/youngji/storagedevice/naver_data/kitti_odometry/dataset/ --filenames_file ./utils/filenames/kitti_train_files.txt --log_directory ./tmp/ --vo_checkpoint_path ./tmp/updeepvo_model/model-76500
+[mapping]
+python deepslam_main.py --mode train --train_mode mapping --model_name mapping_model --data_path /media/youngji/storagedevice/naver_data/kitti_odometry/dataset/ --filenames_file ./utils/filenames/kitti_train_files.txt --log_directory ./tmp/ --prev_checkpoint_path ./tmp/pose_model/model-76500
 
+[localization]
+python deepslam_main.py --mode train --train_mode localization --model_name localization_model --data_path /media/youngji/storagedevice/naver_data/kitti_odometry/dataset/ --filenames_file ./utils/filenames/kitti_train_files.txt --log_directory ./tmp/ --prev_checkpoint_path ./tmp/mapping_model/model-76500
+
+[slam]
+python deepslam_main.py --mode train --train_mode slam --model_name slam_model --data_path /media/youngji/storagedevice/naver_data/kitti_odometry/dataset/ --filenames_file ./utils/filenames/kitti_train_files.txt --log_directory ./tmp/ --prev_checkpoint_path ./tmp/localization_model/model-76500
 
 3. visualization
 tensorboard --logdir=./tmp/my_model
@@ -15,6 +21,4 @@ tensorboard --logdir=./tmp/my_model
 python updeepvo_test.py --checkpoint_path ./tmp/my_model/model-10000
 python deepslam_test.py --checkpoint_path ./tmp/deepslam_model/model-93599
 
-
-python deepslam_main.py --mode train --model_name deepslam_model --data_path /media/youngji/storagedevice/naver_data/kitti_odometry/dataset/ --filenames_file ./utils/filenames/kitti_train_files.txt --log_directory ./tmp/ --vo_checkpoint_path ./tmp/updeepvo_model/model-76500 --checkpoint_path ./tmp/deepslam_model3/model-32159
 

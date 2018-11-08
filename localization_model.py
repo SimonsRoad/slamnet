@@ -20,8 +20,8 @@ deepslam_parameters = namedtuple('parameters',
                         'num_epochs, '
                         'full_summary')
 
-class DeepslamModel(object):
-    """deepslam model"""
+class LocalizationModel(object):
+    """localization model"""
 
     def __init__(self, params, mode, img_cur, img_next, poses_cur, poses_next, cam_params, reuse_variables=None, model_index=0):
 
