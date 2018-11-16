@@ -315,13 +315,17 @@ class Models(object):
             # encoder
             conv1 = self.conv_block(input1, 32, 7)
 
-            conv2 = self.conv_block(conv1, 32, 5)
+            conv2 = self.conv_block(conv1, 64, 5)
 
-            conv3 = self.conv_block(conv2, 32, 3)
+            conv3 = self.conv_block(conv2, 128, 3)
 
-            conv4 = self.conv_block(conv3, 32, 3)
+            conv4 = self.conv_block(conv3, 256, 3)
 
-            conv5 = self.conv_block(conv4, 32, 3)
+            conv5 = self.conv_block(conv4, 256, 3)
+
+            conv6 = self.conv_block(conv5, 256, 3)
+
+            conv7 = self.conv_block(conv6, 256, 3)
 
             skip1 = conv1
 
@@ -331,30 +335,38 @@ class Models(object):
             
             skip4 = conv4
 
+            skip5 = conv5
+
+            skip6 = conv6
+
 
             # RNN
-            dim = np.prod(conv5.shape[1:])
-            flat1 = Lambda(lambda x: tf.reshape(x, [self.rnn_batch_size, self.sequence_size+1, dim]))(conv5)
+            dim = np.prod(conv7.shape[1:])
+            flat1 = Lambda(lambda x: tf.reshape(x, [self.rnn_batch_size, self.sequence_size+1, dim]))(conv7)
             pose_flat = Lambda(lambda x: tf.reshape(x, [self.rnn_batch_size, self.sequence_size+1, 27]))(input2)
             flat2 = concatenate([flat1,pose_flat],axis=2)
             dim2 = dim + pose_flat.shape[2]
 
-            lstm_1 = LSTM(1024, batch_input_shape = (self.rnn_batch_size, self.sequence_size+1, dim2), stateful=True, return_sequences=True)(flat2)
+            lstm_1 = LSTM(512, batch_input_shape = (self.rnn_batch_size, self.sequence_size+1, dim2), stateful=True, return_sequences=True)(flat2)
 
             lstm_2 = LSTM(int(dim), stateful=True, return_sequences=True)(lstm_1)
 
-            unflat1 = Lambda(lambda x: tf.reshape(x, conv5.shape))(lstm_2)
+            unflat1 = Lambda(lambda x: tf.reshape(x, conv7.shape))(lstm_2)
 
             # decoder1
-            deconv5 = self.deconv_block(unflat1, 32, 3, skip4)
+            deconv7 = self.deconv_block(unflat1, 256, 3, skip6)
 
-            deconv4 = self.deconv_block(deconv5, 32, 3, skip3)
+            deconv6 = self.deconv_block(deconv7, 256, 3, skip5)
 
-            deconv3 = self.deconv_block(deconv4, 32, 3, skip2)
+            deconv5 = self.deconv_block(deconv6, 256, 3, skip4)
+
+            deconv4 = self.deconv_block(deconv5, 128, 3, skip3)
+
+            deconv3 = self.deconv_block(deconv4, 64, 3, skip2)
 
             deconv2 = self.deconv_block(deconv3, 32, 3, skip1)
 
-            deconv1 = self.deconv_block(deconv2, 32, 3, None)
+            deconv1 = self.deconv_block(deconv2, 16, 3, None)
 
             s = self.img_shape
             if  s[1] % 2 != 0:
@@ -365,15 +377,14 @@ class Models(object):
             disp = self.get_depth(deconv1)
 
             # decoder2
-            deconv5_2 = self.deconv_block(unflat1, 32, 3, skip4)
 
-            deconv4_2 = self.deconv_block(deconv5_2, 32, 3, skip3)
+            deconv4_2 = self.deconv_block(deconv5, 128, 3, skip3)
 
-            deconv3_2 = self.deconv_block(deconv4_2, 32, 3, skip2)
+            deconv3_2 = self.deconv_block(deconv4_2, 64, 3, skip2)
 
             deconv2_2 = self.deconv_block(deconv3_2, 32, 3, skip1)
 
-            deconv1_2 = self.deconv_block(deconv2_2, 32, 3, None)
+            deconv1_2 = self.deconv_block(deconv2_2, 16, 3, None)
 
             s = self.img_shape
             if  s[1] % 2 != 0:
@@ -384,15 +395,14 @@ class Models(object):
             unc_i = self.get_variance1(deconv1_2)
 
             # decoder3
-            deconv5_3 = self.deconv_block(unflat1, 32, 3, skip4)
 
-            deconv4_3 = self.deconv_block(deconv5_3, 32, 3, skip3)
+            deconv4_3 = self.deconv_block(deconv5, 128, 3, skip3)
 
-            deconv3_3 = self.deconv_block(deconv4_3, 32, 3, skip2)
+            deconv3_3 = self.deconv_block(deconv4_3, 64, 3, skip2)
 
             deconv2_3 = self.deconv_block(deconv3_3, 32, 3, skip1)
 
-            deconv1_3 = self.deconv_block(deconv2_3, 32, 3, None)
+            deconv1_3 = self.deconv_block(deconv2_3, 16, 3, None)
 
             s = self.img_shape
             if  s[1] % 2 != 0:
