@@ -18,8 +18,13 @@ class Models(object):
         self.sequence_size = sequence_size
 
 
-    def get_variance(self, x):
+    def get_variance1(self, x):
         variance = self.conv(x, 3, 3, 1, activation='softplus')
+        variance = Lambda(lambda x: 0.01 + x)(variance)
+        return variance
+
+    def get_variance2(self, x):
+        variance = self.conv(x, 1, 3, 1, activation='softplus')
         variance = Lambda(lambda x: 0.01 + x)(variance)
         return variance
 
@@ -71,9 +76,7 @@ class Models(object):
         return iconv1
 
     def build_depth_architecture(self):
-
         with tf.variable_scope('depth_model',reuse=self.reuse_variables):
-
             input = Input(batch_shape=self.img_shape)
 
             # encoder
@@ -134,13 +137,13 @@ class Models(object):
             # decoder2
 
             deconv4_2 = self.deconv_block(deconv5, 128, 3, skip3)
-            disp4_2 = self.get_variance(deconv4_2)
+            disp4_2 = self.get_variance1(deconv4_2)
 
             deconv3_2 = self.deconv_block(deconv4_2, 64, 3, skip2)
-            disp3_2 = self.get_variance(deconv3_2)
+            disp3_2 = self.get_variance1(deconv3_2)
 
             deconv2_2 = self.deconv_block(deconv3_2, 32, 3, skip1)
-            disp2_2 = self.get_variance(deconv2_2)
+            disp2_2 = self.get_variance1(deconv2_2)
 
             deconv1_2 = self.deconv_block(deconv2_2, 16, 3, None)
 
@@ -150,9 +153,30 @@ class Models(object):
             if  s[2] % 2 != 0:
                 deconv1_2 = Lambda(lambda x: x[:,:,:-1,:])(deconv1_2)
 
-            disp1_2 = self.get_variance(deconv1_2)
+            disp1_2 = self.get_variance1(deconv1_2)
 
-            disp_est  = [disp1, disp2, disp3, disp4, disp1_2, disp2_2, disp3_2, disp4_2]
+            # decoder3
+
+            deconv4_3 = self.deconv_block(deconv5, 128, 3, skip3)
+            disp4_3 = self.get_variance2(deconv4_3)
+
+            deconv3_3 = self.deconv_block(deconv4_3, 64, 3, skip2)
+            disp3_3 = self.get_variance2(deconv3_3)
+
+            deconv2_3 = self.deconv_block(deconv3_3, 32, 3, skip1)
+            disp2_3 = self.get_variance2(deconv2_3)
+
+            deconv1_3 = self.deconv_block(deconv2_3, 16, 3, None)
+
+            s = self.img_shape
+            if  s[1] % 2 != 0:
+                deconv1_3 = Lambda(lambda x: x[:,:-1,:,:])(deconv1_3)
+            if  s[2] % 2 != 0:
+                deconv1_3 = Lambda(lambda x: x[:,:,:-1,:])(deconv1_3)
+
+            disp1_3 = self.get_variance2(deconv1_3)
+
+            disp_est  = [disp1, disp2, disp3, disp4, disp1_2, disp2_2, disp3_2, disp4_2, disp1_3, disp2_3, disp3_3, disp4_3]
 
             self.depth_model = Model(input, disp_est)
 
@@ -179,6 +203,45 @@ class Models(object):
 
             conv7 = self.conv(conv6, 512, 3, 2, activation='relu')
 
+            skip1 = conv1
+
+            skip2 = conv2
+
+
+            # decoder1
+
+            deconv3 = self.deconv_block(conv3, 32, 3, skip2)
+            
+            deconv2 = self.deconv_block(deconv3, 32, 3, skip1)
+
+            deconv1 = self.deconv_block(deconv2, 16, 3, None)
+
+            s = self.img_shape
+            if  s[1] % 2 != 0:
+                deconv1 = Lambda(lambda x: x[:,:-1,:,:])(deconv1)
+            if  s[2] % 2 != 0:
+                deconv1 = Lambda(lambda x: x[:,:,:-1,:])(deconv1)
+
+            img_var = self.get_variance1(deconv1)
+
+
+            # decoder2
+
+            deconv3_2 = self.deconv_block(conv3, 32, 3, skip2)
+            
+            deconv2_2 = self.deconv_block(deconv3_2, 32, 3, skip1)
+
+            deconv1_2 = self.deconv_block(deconv2_2, 16, 3, None)
+
+            s = self.img_shape
+            if  s[1] % 2 != 0:
+                deconv1_2 = Lambda(lambda x: x[:,:-1,:,:])(deconv1_2)
+            if  s[2] % 2 != 0:
+                deconv1_2 = Lambda(lambda x: x[:,:,:-1,:])(deconv1_2)
+
+            depth_var = self.get_variance2(deconv1_2)
+
+
             dim = np.prod(conv7.shape[1:])
 
             flat1 = Lambda(lambda x: tf.reshape(x, [-1, dim]))(conv7)
@@ -204,7 +267,7 @@ class Models(object):
 
             fc3_unc = Dense(21, input_shape=(512,))(fc2_unc)#, activation = 'softplus'
 
-            self.pose_model = Model([input1,input2], [fc3_tran, fc3_rot, fc3_unc])
+            self.pose_model = Model([input1,input2], [fc3_tran, fc3_rot, fc3_unc, img_var, depth_var])
 
     def build_localization_architecture(self):
         
@@ -245,38 +308,53 @@ class Models(object):
     def build_mapping_architecture(self):
         
         with tf.variable_scope('mapping_model',reuse=self.reuse_variables):
-            input1 = Input(batch_shape=self.img_shape)
+            input1 = Input(batch_shape=[self.img_shape[0]+1,self.img_shape[1],self.img_shape[2],8])
 
-            input2 = Input(batch_shape=self.img_shape)
-
-            input = concatenate([input1,input2], axis=3)
+            input2 = Input(batch_shape=[self.img_shape[0]+1,27])
         
             # encoder
-            conv1 = self.conv_block(input, 32, 7)
+            conv1 = self.conv_block(input1, 32, 7)
 
-            conv2 = self.conv_block(conv1, 64, 5)
+            conv2 = self.conv_block(conv1, 32, 5)
 
-            conv3 = self.conv_block(conv2, 128, 3)
+            conv3 = self.conv_block(conv2, 32, 3)
 
+            conv4 = self.conv_block(conv3, 32, 3)
+
+            conv5 = self.conv_block(conv4, 32, 3)
 
             skip1 = conv1
 
             skip2 = conv2
 
+            skip3 = conv3
+            
+            skip4 = conv4
+
+
             # RNN
-            dim = np.prod(conv3.shape[1:])
+            dim = np.prod(conv5.shape[1:])
+            flat1 = Lambda(lambda x: tf.reshape(x, [self.rnn_batch_size, self.sequence_size+1, dim]))(conv5)
+            pose_flat = Lambda(lambda x: tf.reshape(x, [self.rnn_batch_size, self.sequence_size+1, 27]))(input2)
+            flat2 = concatenate([flat1,pose_flat],axis=2)
+            dim2 = dim + pose_flat.shape[2]
 
-            flat1 = Lambda(lambda x: tf.reshape(x, [self.rnn_batch_size,self.params.sequence_size, dim]))(conv3)
-            lstm_1 = LSTM(dim, batch_input_shape = (self.rnn_batch_size,self.sequence_size,dim), stateful=True, return_sequences=True)(flat1)
+            lstm_1 = LSTM(1024, batch_input_shape = (self.rnn_batch_size, self.sequence_size+1, dim2), stateful=True, return_sequences=True)(flat2)
 
-            unflat1 = tf.reshape(lstm_1, conv3.shape)
+            lstm_2 = LSTM(int(dim), stateful=True, return_sequences=True)(lstm_1)
+
+            unflat1 = Lambda(lambda x: tf.reshape(x, conv5.shape))(lstm_2)
 
             # decoder1
-            deconv3 = self.deconv_block(unflat1, 64, 3, skip2)
+            deconv5 = self.deconv_block(unflat1, 32, 3, skip4)
+
+            deconv4 = self.deconv_block(deconv5, 32, 3, skip3)
+
+            deconv3 = self.deconv_block(deconv4, 32, 3, skip2)
 
             deconv2 = self.deconv_block(deconv3, 32, 3, skip1)
 
-            deconv1 = self.deconv_block(deconv2, 16, 3, None)
+            deconv1 = self.deconv_block(deconv2, 32, 3, None)
 
             s = self.img_shape
             if  s[1] % 2 != 0:
@@ -287,12 +365,15 @@ class Models(object):
             disp = self.get_depth(deconv1)
 
             # decoder2
+            deconv5_2 = self.deconv_block(unflat1, 32, 3, skip4)
 
-            deconv3_2 = self.deconv_block(unflat1, 64, 3, skip2)
+            deconv4_2 = self.deconv_block(deconv5_2, 32, 3, skip3)
+
+            deconv3_2 = self.deconv_block(deconv4_2, 32, 3, skip2)
 
             deconv2_2 = self.deconv_block(deconv3_2, 32, 3, skip1)
 
-            deconv1_2 = self.deconv_block(deconv2_2, 16, 3, None)
+            deconv1_2 = self.deconv_block(deconv2_2, 32, 3, None)
 
             s = self.img_shape
             if  s[1] % 2 != 0:
@@ -300,6 +381,51 @@ class Models(object):
             if  s[2] % 2 != 0:
                 deconv1_2 = Lambda(lambda x: x[:,:,:-1,:])(deconv1_2)
 
-            disp_unc = self.get_variance(deconv1_2)
+            unc_i = self.get_variance1(deconv1_2)
 
-            self.mapping_model = Model([input1,input2], [disp, disp_unc])
+            # decoder3
+            deconv5_3 = self.deconv_block(unflat1, 32, 3, skip4)
+
+            deconv4_3 = self.deconv_block(deconv5_3, 32, 3, skip3)
+
+            deconv3_3 = self.deconv_block(deconv4_3, 32, 3, skip2)
+
+            deconv2_3 = self.deconv_block(deconv3_3, 32, 3, skip1)
+
+            deconv1_3 = self.deconv_block(deconv2_3, 32, 3, None)
+
+            s = self.img_shape
+            if  s[1] % 2 != 0:
+                deconv1_3 = Lambda(lambda x: x[:,:-1,:,:])(deconv1_3)
+            if  s[2] % 2 != 0:
+                deconv1_3 = Lambda(lambda x: x[:,:,:-1,:])(deconv1_3)
+
+            unc_d = self.get_variance2(deconv1_3)
+
+
+#            dim3 = np.prod(conv5.shape[1:])
+
+#            unflat2 = Lambda(lambda x: tf.reshape(x, [-1, dim3]))(lstm_2)
+
+#            # translation
+#            fc1_tran = Dense(512, input_shape=(dim,))(unflat2)
+
+#            fc2_tran = Dense(512, input_shape=(512,))(fc1_tran)
+
+#            fc3_tran = Dense(3, input_shape=(512,))(fc2_tran)
+
+#            # rotation
+#            fc1_rot = Dense(512, input_shape=(dim,))(unflat2)
+
+#            fc2_rot = Dense(512, input_shape=(512,))(fc1_rot)
+
+#            fc3_rot = Dense(3, input_shape=(512,))(fc2_rot)
+
+#            # pose uncertainty
+#            fc1_unc = Dense(512, input_shape=(dim,))(unflat2)
+
+#            fc2_unc = Dense(512, input_shape=(512,))(fc1_unc)
+
+#            fc3_unc = Dense(21, input_shape=(512,))(fc2_unc)#, activation = 'softplus'
+
+            self.mapping_model = Model([input1,input2], [disp, unc_i, unc_d])

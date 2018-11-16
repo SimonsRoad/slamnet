@@ -133,7 +133,7 @@ def train(params):
                     if args.prev_checkpoint_path != '':
                         
                         if args.train_mode == 'mapping':
-                            train_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='mapping_model') + tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='depth_model')
+                            train_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='mapping_model')# + tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='depth_model')
                         elif args.train_mode == 'localization':
                             train_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='localization_model') + tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='pose_model')
                         elif args.train_mode == 'slam':
@@ -179,7 +179,7 @@ def train(params):
         # LOAD CHECKPOINT IF SET
         if args.prev_checkpoint_path != '':
             if args.train_mode == 'mapping':
-                load_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='pose_model') + tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='depth_model') + tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='localization_model')
+                load_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='pose_model') + tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='depth_model')
             elif args.train_mode == 'localization':
                 load_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='pose_model') + tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='depth_model') + tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='mapping_model')
             elif args.train_mode == 'slam':
@@ -205,7 +205,7 @@ def train(params):
             if idx ==0:
                 sess.run(init_op)
 
-            model.localization_model.reset_states()  
+            model.modelnets.mapping_model.reset_states()  
 
 
             if step % 100 == 0:
