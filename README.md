@@ -12,7 +12,7 @@ python deepslam_main.py --mode train --train_mode mapping --model_name mapping_m
 python deepslam_main.py --mode train --train_mode localization --model_name localization_model --data_path /media/youngji/storagedevice/naver_data/kitti_odometry/dataset/ --filenames_file ./utils/filenames/kitti_train_files.txt --log_directory ./tmp/ --prev_checkpoint_path ./tmp/mapping_model/model-76500
 
 [slam]
-python deepslam_main.py --mode train --train_mode slam --model_name slam_model --data_path /media/youngji/storagedevice/naver_data/kitti_odometry/dataset/ --filenames_file ./utils/filenames/kitti_train_files.txt --log_directory ./tmp/ --prev_checkpoint_path ./tmp/localization_model/model-76500
+python deepslam_main.py --mode train --train_mode slam --model_name slam_model --data_path /media/youngji/storagedevice/naver_data/kitti_odometry/dataset/ --filenames_file ./utils/filenames/kitti_train_files.txt --log_directory ./tmp/ --prev_checkpoint_path ./tmp/pose_model/model-76500
 
 3. visualization
 tensorboard --logdir=./tmp/my_model

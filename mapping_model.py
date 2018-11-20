@@ -42,7 +42,7 @@ class MappingModel(object):
 #        self.modelnets.build_localization_architecture()
         self.modelnets.build_mapping_architecture()
 
-        [self.depthmap, self.depthmap_unc_i, self.depthmap_unc_d, self.tran, self.rot, self.pose_unc] = self.build_model(self.img_cur, self.img_next)
+        [self.depthmap, self.depthmap_unc_i, self.depthmap_unc_d, self.tran, self.rot, self.pose_unc, self.tran_est, self.rot_est, self.pose_unc_est] = self.build_model(self.img_cur, self.img_next)
 
         if self.mode == 'test':
             return
@@ -91,49 +91,46 @@ class MappingModel(object):
             disp2 = self.modelnets.depth_model(img2)
             [disp2[i].set_shape(disp2[i]._keras_shape) for i in range(12)]
 
-            self.depth_prev_net = disp1[0] 
+            self.depth_prev = disp1[0]
+            self.unc_i_prev = disp1[4]
+            self.unc_d_prev = disp1[8] 
 
             # pose
             [trans, rot, unc, _, _] = self.modelnets.pose_model([img1,img2])
 
-            # create disps, uncertainties, and poses
-            imgs = concatenate([img1,img2[-1:,:,:,:]],axis=0)
-
-            disps = concatenate([disp1[0],disp2[0][-1:,:,:,:]],axis=0)
-
-            unc_i = concatenate([disp1[4],disp2[4][-1:,:,:,:]],axis=0)
-
-            unc_d = concatenate([disp1[8],disp2[8][-1:,:,:,:]],axis=0)
-
-            imgs_for_mapping = concatenate([imgs, disps,unc_i,unc_d],axis=3)
-
-            pose1 = concatenate([trans,rot,unc],axis=1)
-            poses = concatenate([tf.zeros([1, 27], tf.float32),pose1],axis=0)
-#            poses = concatenate([pose1[:1,:],pose1],axis=0)
             # mapping
-            [disp_est, unc_i, unc_d] = self.modelnets.mapping_model([imgs_for_mapping, poses])
+            imgs_for_mapping = concatenate([img1, img2, disp1[0], disp2[0], disp1[4], disp2[4], disp1[8], disp2[8]],axis=3)
+            poses = concatenate([trans,rot,unc],axis=1)
+            [disp_est, unc_i, unc_d, tran_est, rot_est, unc_est] = self.modelnets.mapping_model([imgs_for_mapping, poses])
+            
             disp_est.set_shape(disp_est._keras_shape)
             unc_i.set_shape(unc_i._keras_shape)
             unc_d.set_shape(unc_d._keras_shape)
 
-        return disp_est, unc_i, unc_d, trans, rot, unc
+            tran_est.set_shape(tran_est._keras_shape)
+            rot_est.set_shape(rot_est._keras_shape)
+            unc_est.set_shape(unc_est._keras_shape)
+
+        return disp_est, unc_i, unc_d, trans, rot, unc, tran_est, rot_est, unc_est
 
     def build_outputs(self):
 
         # generate depthmap1 and depthmap2 from depthmap
-        self.depthmap1 = self.depthmap[:-1,:,:,:]
-        self.depthmap2 = self.depthmap[1:,:,:,:]        
-        self.depthmap1_unc_i = self.depthmap_unc_i[:-1,:,:,:]
-        self.depthmap1_unc_d = self.depthmap_unc_d[:-1,:,:,:]
-        self.depthmap2_unc_i = self.depthmap_unc_i[1:,:,:,:]
-        self.depthmap2_unc_d = self.depthmap_unc_d[1:,:,:,:]
+        self.depthmap1 = concatenate([self.depth_prev[:1,:,:,:],self.depthmap[:-1,:,:,:]],axis=0)
+        self.depthmap2 = self.depthmap        
+        self.depthmap1_unc_i = concatenate([self.unc_i_prev[:1,:,:,:],self.depthmap_unc_i[:-1,:,:,:]],axis=0)
+        self.depthmap1_unc_d = concatenate([self.unc_d_prev[:1,:,:,:],self.depthmap_unc_d[:-1,:,:,:]],axis=0)
+        self.depthmap2_unc_i = self.depthmap_unc_i
+        self.depthmap2_unc_d = self.depthmap_unc_d
 
         # generate base images & depthmap
         self.img_base = tf.tile(self.img_cur[:1,:,:,:], [self.params.batch_size,1,1,1])
         self.depthmap_base = tf.tile(self.depthmap1[:1,:,:,:], [self.params.batch_size,1,1,1])
+        self.depthmap_base_unc_i = tf.tile(self.unc_i_prev[:1,:,:,:], [self.params.batch_size,1,1,1])
+        self.depthmap_base_unc_d = tf.tile(self.unc_d_prev[:1,:,:,:], [self.params.batch_size,1,1,1])
 
         # generate acc_rot & acc_tran
-        M_delta = compose_matrix(self.rot,self.tran)
+        M_delta = compose_matrix(self.rot_est,self.tran_est)
         for i in range(self.params.batch_size):
             if i==0:
                 est = M_delta[0:1,:,:]
@@ -144,13 +141,13 @@ class MappingModel(object):
         self.rot_acc,self.tran_acc = decompose_matrix(M_est)
 
         # generate k+1 th image
-        self.img_n_est = projective_transformer(self.img_cur, self.focal_length1, self.focal_length2, self.c0, self.c1, self.depthmap2, self.rot, self.tran)
+        self.img_est = projective_transformer(self.img_cur, self.focal_length1, self.focal_length2, self.c0, self.c1, self.depthmap2, self.rot_est, self.tran_est)
 
         # generate k+n th image
-        self.img_est = projective_transformer(self.img_base, self.focal_length1, self.focal_length2, self.c0, self.c1, self.depthmap2, self.rot_acc, self.tran_acc)
+        self.img_n_est = projective_transformer(self.img_base, self.focal_length1, self.focal_length2, self.c0, self.c1, self.depthmap2, self.rot_acc, self.tran_acc)
 
         # generate k+1 th depth image
-        self.depth_est = projective_transformer(self.depthmap1, self.focal_length1, self.focal_length2, self.c0, self.c1, self.depthmap2, self.rot, self.tran)
+        self.depth_est = projective_transformer(self.depthmap1, self.focal_length1, self.focal_length2, self.c0, self.c1, self.depthmap2, self.rot_est, self.tran_est)
 
         # generate k+n th depth image
         self.depth_n_est = projective_transformer(self.depthmap_base, self.focal_length1, self.focal_length2, self.c0, self.c1, self.depthmap2, self.rot_acc, self.tran_acc)
@@ -180,7 +177,7 @@ class MappingModel(object):
         res_uncertainty = tf.reshape(tmp, [_num_batch,_height,_width,_num_channels])
 
         res_u_norm = res_uncertainty + data_uncertainty
-#        res_u_norm = Lambda(lambda x: 0.00001 + x)(res_uncertainty)
+        res_u_norm = Lambda(lambda x: 0.00001 + x)(res_u_norm)
         res_u_plus = Lambda(lambda x: 1.0 + x)(res_u_norm)
 
         # dist
@@ -195,11 +192,11 @@ class MappingModel(object):
         
         # PHOTOMETRIC REGISTRATION (temporal loss)
         self.image_dists = self.compute_temporal_loss(self.img_est, self.img_next, self.depthmap1_unc_i, self.pose_unc)
-        self.image_n_dists = self.compute_temporal_loss(self.img_n_est, self.img_next, self.depthmap1_unc_i, self.pose_unc)
+        self.image_n_dists = self.compute_temporal_loss(self.img_n_est, self.img_next, self.depthmap_base_unc_i, self.pose_unc_est)
         self.image_loss  = tf.reduce_mean(self.image_dists + self.image_n_dists)
 
         self.depth_dists = self.compute_temporal_loss(self.depth_est, self.depthmap2, self.depthmap1_unc_d + self.depthmap2_unc_d, self.pose_unc)
-        self.depth_n_dists = self.compute_temporal_loss(self.depth_n_est, self.depthmap2, self.depthmap1_unc_d + self.depthmap2_unc_d, self.pose_unc)
+        self.depth_n_dists = self.compute_temporal_loss(self.depth_n_est, self.depthmap2, self.depthmap_base_unc_d + self.depthmap2_unc_d, self.pose_unc_est)
         self.depth_loss  = tf.reduce_mean(self.depth_dists + self.depth_n_dists)
 
         self.depth_smoothness_loss = tf.reduce_mean(self.depth_smoothness)
@@ -215,9 +212,10 @@ class MappingModel(object):
             tf.summary.scalar('depth_smoothness_loss', self.depth_smoothness_loss, collections=self.model_collection)
             tf.summary.image('img_cur',  self.img_cur,   max_outputs=3, collections=self.model_collection)
             tf.summary.image('img_next',  self.img_next,   max_outputs=3, collections=self.model_collection)
-            tf.summary.image('depth_prev_net',  self.depth_prev_net,   max_outputs=3, collections=self.model_collection)
+            tf.summary.image('depth_prev',  self.depth_prev,   max_outputs=3, collections=self.model_collection)
             tf.summary.image('depth',  self.depthmap1,   max_outputs=3, collections=self.model_collection)
             tf.summary.image('img_est',  self.img_est[0],   max_outputs=3, collections=self.model_collection)
+            tf.summary.image('img_n_est',  self.img_n_est[0],   max_outputs=3, collections=self.model_collection)
 
             txtPredictions = tf.Print(tf.as_string(self.Q),[tf.as_string(self.Q)], message='predictions', name='txtPredictions')
             tf.summary.text('predictions', txtPredictions, collections=self.model_collection)
