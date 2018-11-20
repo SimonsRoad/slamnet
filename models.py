@@ -581,6 +581,39 @@ class Models(object):
 
             self.pose_model = Model([input1,input2], [fc3_tran, fc3_rot, fc3_unc, img_var, depth_var])
 
+    def build_slam_architecture(self):
+        
+        with tf.variable_scope('slam_model',reuse=self.reuse_variables):
+
+            input1 = Input(batch_shape=[self.img_shape[0],self.img_shape[1]/128,self.img_shape[2]/128,512])
+
+            input2 = Input(batch_shape=[self.img_shape[0],self.img_shape[1]/128,self.img_shape[2]/128,512])
+
+            input3 = Input(batch_shape=[self.img_shape[0],self.img_shape[1]/128,self.img_shape[2]/128,512])
+        
+            input = concatenate([input1, input2, input3], axis=3])
+
+            # RNN
+            dim = np.prod(input.shape[1:])
+
+            flat = Lambda(lambda x: tf.reshape(x, [1, self.img_shape[0], dim]))(input)
+
+            lstm_1 = LSTM(512, batch_input_shape = (1, self.img_shape[0], dim), stateful=True, return_sequences=True)(flat)
+
+            lstm_2 = LSTM(int(dim), stateful=True, return_sequences=True)(lstm_1)
+            
+            # output generation
+    
+            unflat = Lambda(lambda x: tf.reshape(x, [self.img_shape[0],self.img_shape[1]/128,self.img_shape[2]/128,512*3]))(lstm_2)
+
+            output1 = Lambda(lambda x: tf.reshape(x, input1.shape))(lstm_2[:,:,:,:512])
+
+            output2 = Lambda(lambda x: tf.reshape(x, input2.shape))(lstm_2[:,:,:,512:1024])
+
+            output3 = Lambda(lambda x: tf.reshape(x, input3.shape))(lstm_2[:,:,:,1024:])
+
+            self.slam_model = Model([input1,input2,input3], [output1,output2,output3])
+
     def build_localization_architecture(self):
         
         with tf.variable_scope('localization_model',reuse=self.reuse_variables):
