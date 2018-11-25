@@ -214,6 +214,75 @@ class Models(object):
 
             self.depth_var_decoder_model = Model(input, disp_est)
 
+    def build_second_variances_decoder(self):
+        with tf.variable_scope('second_var_decoder_model',reuse=self.reuse_variables):
+
+            skip1 = Input(batch_shape=[self.img_shape[0],self.img_shape[1]/2,self.img_shape[2]/2,32])
+
+            skip2 = Input(batch_shape=[self.img_shape[0],self.img_shape[1]/4,self.img_shape[2]/4,64])
+        
+            skip3 = Input(batch_shape=[self.img_shape[0],self.img_shape[1]/8,self.img_shape[2]/8,128])
+
+            skip4 = Input(batch_shape=[self.img_shape[0],self.img_shape[1]/16,self.img_shape[2]/16,256])
+
+            skip5 = Input(batch_shape=[self.img_shape[0],self.img_shape[1]/32,self.img_shape[2]/32,512])
+
+            skip6 = Input(batch_shape=[self.img_shape[0],self.img_shape[1]/64,self.img_shape[2]/64,512])
+
+            conv7 = Input(batch_shape=[self.img_shape[0],self.img_shape[1]/128,self.img_shape[2]/128,512])
+
+            input = [skip1,skip2,skip3,skip4,skip5,skip6,conv7]
+
+            # decoder1
+            deconv7 = self.deconv_block(conv7, 512, 3, skip6)
+
+            deconv6 = self.deconv_block(deconv7, 512, 3, skip5)
+
+            deconv5 = self.deconv_block(deconv6, 256, 3, skip4)
+            
+            deconv4 = self.deconv_block(deconv5, 128, 3, skip3)
+            disp4 = self.get_variance1(deconv4)
+
+            deconv3 = self.deconv_block(deconv4, 64, 3, skip2)
+            disp3 = self.get_variance1(deconv3)
+
+            deconv2 = self.deconv_block(deconv3, 32, 3, skip1)
+            disp2 = self.get_variance1(deconv2)
+
+            deconv1 = self.deconv_block(deconv2, 16, 3, None)
+
+            s = self.img_shape
+            if  s[1] % 2 != 0:
+                deconv1 = Lambda(lambda x: x[:,:-1,:,:])(deconv1)
+            if  s[2] % 2 != 0:
+                deconv1 = Lambda(lambda x: x[:,:,:-1,:])(deconv1)
+
+            disp1 = self.get_variance1(deconv1)
+
+            # decoder2
+
+            deconv4_2 = self.deconv_block(deconv5, 128, 3, skip3)
+            disp4_2 = self.get_variance2(deconv4_2)
+
+            deconv3_2 = self.deconv_block(deconv4_2, 64, 3, skip2)
+            disp3_2 = self.get_variance2(deconv3_2)
+
+            deconv2_2 = self.deconv_block(deconv3_2, 32, 3, skip1)
+            disp2_2 = self.get_variance2(deconv2_2)
+
+            deconv1_2 = self.deconv_block(deconv2_2, 16, 3, None)
+
+            s = self.img_shape
+            if  s[1] % 2 != 0:
+                deconv1_2 = Lambda(lambda x: x[:,:-1,:,:])(deconv1_2)
+            if  s[2] % 2 != 0:
+                deconv1_2 = Lambda(lambda x: x[:,:,:-1,:])(deconv1_2)
+
+            disp1_2 = self.get_variance2(deconv1_2)
+
+            disp_est  = [disp1, disp2, disp3, disp4, disp1_2, disp2_2, disp3_2, disp4_2]
+
+            self.second_var_decoder_model = Model(input, disp_est)
     
     def build_pose_encoder(self):
         with tf.variable_scope('pose_encoder_model',reuse=self.reuse_variables):

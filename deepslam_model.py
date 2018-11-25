@@ -40,13 +40,13 @@ class DeepslamModel(object):
         self.modelnets.build_depth_encoder()
         self.modelnets.build_depth_decoder()
         self.modelnets.build_depth_variances_decoder()
-        self.modelnets.build_depth_variances_decoder2()
         self.modelnets.build_pose_encoder()
         self.modelnets.build_pose_decoder()
+        self.modelnets.build_second_variances_decoder()
         self.modelnets.build_slam_architecture()
         self.modelnets.build_pose_variances_decoder()
 
-        self.depthmap1, self.depthmap2, self.tran_est, self.rot_est, self.unc, self.var1, self.var1, self.var3, self.var4, self.pose_unc = self.build_model(self.img_cur, self.img_next)
+        self.depthmap1, self.depthmap2, self.tran_est, self.rot_est, self.unc, self.var1, self.var2, self.var3, self.var4, self.pose_unc = self.build_model(self.img_cur, self.img_next)
 
         if self.mode == 'test':
             return
@@ -70,21 +70,41 @@ class DeepslamModel(object):
         gy = tf.pad(gy, [[0, 0], [0, 1], [0, 0], [0, 0]], "CONSTANT")
         return gy
 
-    def get_disparity_smoothness(self, disp, img):
+    def get_disparity_smoothness(self, disp, pyramid):
+        disp_gradients_x = [self.gradient_x(d) for d in disp]
+        disp_gradients_y = [self.gradient_y(d) for d in disp]
 
-        disp_gradients_x = self.gradient_x(disp)
-        disp_gradients_y = self.gradient_y(disp)
+        image_gradients_x = [self.gradient_x(img) for img in pyramid]
+        image_gradients_y = [self.gradient_y(img) for img in pyramid]
 
-        image_gradients_x = self.gradient_x(img)
-        image_gradients_y = self.gradient_y(img)
+        weights_x = [tf.exp(-tf.reduce_mean(tf.abs(g), 3, keepdims=True)) for g in image_gradients_x]
+        weights_y = [tf.exp(-tf.reduce_mean(tf.abs(g), 3, keepdims=True)) for g in image_gradients_y]
 
-        weights_x = tf.exp(-tf.reduce_mean(tf.abs(image_gradients_x), 3, keepdims=True))
-        weights_y = tf.exp(-tf.reduce_mean(tf.abs(image_gradients_y), 3, keepdims=True))
-
-        smoothness_x = tf.abs(disp_gradients_x) * weights_x 
-        smoothness_y = tf.abs(disp_gradients_y) * weights_y
-
+        smoothness_x = [tf.abs(disp_gradients_x[i]) * weights_x[i] for i in range(4)]
+        smoothness_y = [tf.abs(disp_gradients_y[i]) * weights_y[i] for i in range(4)]
         return smoothness_x + smoothness_y
+
+    def scale_pyramid(self, img, num_scales):
+        scaled_imgs = [img]    
+        s = img.get_shape().as_list()
+        h = s[1]
+        w = s[2]
+        tmp_h = h
+        tmp_w = w
+        nh = h
+        nw = w
+        for i in range(num_scales - 1):
+            nh = nh // 2
+            nw = nw // 2
+            if  tmp_h % 2 != 0:
+                nh = nh +1
+            if  tmp_w % 2 != 0:
+                nw = nw +1
+            scaled_imgs.append(tf.image.resize_area(img, [nh, nw]))
+            scaled_imgs[i+1].set_shape([s[0],nh,nw,s[3]])
+            tmp_h = nh
+            tmp_w = nw
+        return scaled_imgs
 
     def build_model(self,img1,img2):
         with slim.arg_scope([slim.conv2d, slim.conv2d_transpose], activation_fn=tf.nn.elu):
@@ -101,7 +121,7 @@ class DeepslamModel(object):
             [depth1_conv7, depth2_conv7, pose_conv7] = self.modelnets.slam_model([d1_conv7, d2_conv7, p1_conv7])
             skips_depth1 = [d1_conv1,d1_conv2,d1_conv3,d1_conv4,d1_conv5,d1_conv6,depth1_conv7]
             skips_depth2 = [d2_conv1,d2_conv2,d2_conv3,d2_conv4,d2_conv5,d2_conv6,depth2_conv7]
-            skips_pose = p1_conv7
+            skips_pose = pose_conv7
 
             # decoders
             disp1 = self.modelnets.depth_decoder_model(skips_depth1) 
@@ -114,9 +134,9 @@ class DeepslamModel(object):
             var2 = self.modelnets.depth_var_decoder_model(skips_depth2) 
             [var2[i].set_shape(var2[i]._keras_shape) for i in range(8)]
 
-            var3 = self.modelnets.depth_var_decoder_model2(skips_depth1) 
+            var3 = self.modelnets.second_var_decoder_model(skips_depth1) 
             [var3[i].set_shape(var3[i]._keras_shape) for i in range(8)]
-            var4 = self.modelnets.depth_var_decoder_model2(skips_depth2) 
+            var4 = self.modelnets.second_var_decoder_model(skips_depth2) 
             [var4[i].set_shape(var4[i]._keras_shape) for i in range(8)]
 
             [trans, rot, unc] = self.modelnets.pose_decoder_model(skips_pose)
@@ -194,8 +214,8 @@ class DeepslamModel(object):
     def build_losses(self):
         
         # PHOTOMETRIC REGISTRATION (temporal loss)
-        self.image_dists = [self.compute_temporal_loss(self.img_est[i], self.img_next_pyramid, self.var1[i]+self.var2[i], self.unc) for i in range(4)]
-        self.image_n_dists = [self.compute_temporal_loss(self.img_n_est[i], self.img_next_pyramid[i], self.var3[i]+self.img_var4[i], self.pose_unc) for i in range(4)]
+        self.image_dists = [self.compute_temporal_loss(self.img_est[i], self.img_next_pyramid[i], self.var1[i]+self.var2[i], self.unc) for i in range(4)]
+        self.image_n_dists = [self.compute_temporal_loss(self.img_n_est[i], self.img_next_pyramid[i], self.var3[i]+self.var4[i], self.pose_unc) for i in range(4)]
         self.image_loss  = tf.reduce_mean([tf.reduce_mean(self.image_dists[i] + self.image_n_dists[i]) for i in range(4)])
 
         self.depth_dists = [self.compute_temporal_loss(self.depth_est[i], self.depthmap2[i], self.var1[4+i]+self.var2[4+i], self.unc) for i in range(4)]
@@ -204,7 +224,7 @@ class DeepslamModel(object):
 
         self.depth_smoothness_loss = tf.reduce_mean([tf.reduce_mean(self.depth1_smoothness[i] + self.depth2_smoothness[i]) for i in range(4)])
 
-        self.total_loss = tf.reduce_mean(tf.reduce_mean((self.image_dists[i] + self.image_n_dists[i]) + 0.01*(self.depth_dists[i] + self.depth_n_dists[i]) + 0.01*(self.depth1_smoothness[i] + self.depth2_smoothness[i])) for i in range(4)])
+        self.total_loss = tf.reduce_mean([tf.reduce_mean((self.image_dists[i] + self.image_n_dists[i]) + 0.01*(self.depth_dists[i] + self.depth_n_dists[i]) + 0.01*(self.depth1_smoothness[i] + self.depth2_smoothness[i])) for i in range(4)])
  
         self.poses_txt = concatenate([self.tran_est,self.rot_est],axis=0)
 
