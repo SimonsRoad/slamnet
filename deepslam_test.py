@@ -22,9 +22,10 @@ from std_msgs.msg import String
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge, CvBridgeError
 
-from undeepslam_model import *
+from deepslam_model import *
 from deepslam_dataloader import *
 from transformers import *
+
 
 parser = argparse.ArgumentParser(description='deepslam TensorFlow implementation.')
 
@@ -59,7 +60,7 @@ class deepslam:
         self.num_th = 5
 
         '''Initialize network for the VO estimation'''
-        batch_num = 5
+        batch_num = 1
         params = deepslam_parameters(
             height=args.input_height,
             width=args.input_width,
@@ -104,7 +105,7 @@ class deepslam:
 
         original_height, original_width, num_channels = input_image.shape
 
-        input_image = scipy.misc.imresize(input_image, [args.input_height, args.input_width], interp='lanczos')
+        input_image = scipy.misc.imresize(input_image, [args.input_height, args.input_width])
         if self.is_start == True:
             self.img_left = self.img_left_next
         self.img_left_next = np.expand_dims(input_image.astype(np.float32) / 255, axis=0)
@@ -115,7 +116,7 @@ class deepslam:
         "Check new sequence is comming"
         if self.is_start == True:
             if self.is_left_in == True:
-                self.test_multiple()
+                self.test_simple()
                 self.is_left_in = False
         else: 
             if self.is_left_in == True:
@@ -126,12 +127,17 @@ class deepslam:
     def test_simple(self):
 
         """Test function."""
-        [tran, rot] = self.sess.run([self.model.tran, self.model.rot], feed_dict={self.model.img_cur: self.img_left, self.model.img_next: self.img_left_next})
+        [disp, tran, rot] = self.sess.run([self.model.depthmap1[0], self.model.tran_est, self.model.rot_est], feed_dict={self.model.img_cur: self.img_left, self.model.img_next: self.img_left_next})
 
+        #Publish Depth Image
+        disp = disp.squeeze()
+        disp_to_img = scipy.misc.imresize(disp.squeeze(), [args.input_height, args.input_width])
+        cv2.imshow("disp_to_img", disp_to_img)
+        cv2.waitKey(3)
+        self.image_pub.publish(self.bridge.cv2_to_imgmsg(disp, "32FC1"))
 
         #Publish R and t
         print("publish R and t")
-            
         print(tran)
         print(rot)
 
