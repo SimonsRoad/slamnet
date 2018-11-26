@@ -200,7 +200,7 @@ class DeepslamModel(object):
         res_uncertainty = tf.reshape(tmp, [_num_batch,_height,_width,_num_channels])
 
         res_u_norm = res_uncertainty + data_uncertainty
-        res_u_norm = Lambda(lambda x: 0.00001 + x)(res_u_norm)
+#        res_u_norm = Lambda(lambda x: 0.00001 + x)(res_u_norm)
         res_u_plus = Lambda(lambda x: 1.0 + x)(res_u_norm)
 
         # dist
