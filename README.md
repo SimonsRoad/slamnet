@@ -21,4 +21,5 @@ tensorboard --logdir=./tmp/my_model
 python updeepvo_test.py --checkpoint_path ./tmp/my_model/model-10000
 python deepslam_test.py --checkpoint_path ./tmp/deepslam_model/model-93599
 
+python deepslam_main.py --mode train --train_mode slam --model_name slam_model3 --data_path /media/youngji/storagedevice/naver_data/kitti_odometry/dataset/ --filenames_file ./utils/filenames/kitti_train_files.txt --log_directory ./tmp/ --checkpoint_path ./tmp/slam_model/model-93599
 

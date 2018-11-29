@@ -130,15 +130,14 @@ def train(params):
 
                     reuse_variables = True
 
-                    if args.prev_checkpoint_path != '':
+                    if args.prev_checkpoint_path != '' or args.checkpoint_path != '':
                         
                         if args.train_mode == 'mapping':
                             train_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='mapping_model')# + tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='depth_model')
                         elif args.train_mode == 'localization':
                             train_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='localization_model') + tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='pose_model')
                         elif args.train_mode == 'slam':
-                            train_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='slam_model') + tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='second_var_decoder_model') + tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='pose_var_decoder_model') #+ tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='pose_decoder_model') + tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='depth_decoder_model') + tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='depth_var_decoder_model')
-
+                            train_vars = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='slam_model') + tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='second_var_decoder_model') + tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='pose_var_decoder_model')
                         grads = opt_step.compute_gradients(loss,var_list=train_vars)
                     else:
                         grads = opt_step.compute_gradients(loss)
