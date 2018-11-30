@@ -4,7 +4,7 @@ clc;
 N = 100000;
 
 %% read results
-fid = fopen('./kitti10_slam/GT_poses.txt', 'r');
+fid = fopen('./kitti10/GT_poses.txt', 'r');
 gt_poses = [];
 for iter=1:N
     oneline = fgetl(fid);
@@ -17,7 +17,7 @@ for iter=1:N
 end
 fclose(fid);
 
-fid = fopen('./kitti10_slam/VO_poses.txt', 'r');
+fid = fopen('./kitti10/VO_poses.txt', 'r');
 est_poses = [];
 for iter=1:N
     oneline = fgetl(fid);
@@ -76,10 +76,17 @@ for iter=1:N
         tran_error_est(count) = sqrt(tran_est(iter,:)*tran_est(iter,:)')/len(iter);
         count = count+1;
     end
+    if count>8
+        break;
+    end
 end
 
 hFig1 = figure(1);
 plot(lengths,rot_error_est,'Color',[0.7,0,0]); hold on;
-plot(lengths,tran_error_est,'Color',[0.7,0,0]); hold on;
+plot(lengths,tran_error_est,'Color',[0,0.7,0]); hold on;
+
+mean(tran_error_est)*100
+mean(rot_error_est)*100
+
 ylabel('rotational error (\circ)','FontSize',12);
 
