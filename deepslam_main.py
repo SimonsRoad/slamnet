@@ -32,9 +32,9 @@ parser.add_argument('--input_height',              type=int,   help='input heigh
 parser.add_argument('--input_width',               type=int,   help='input width', default=512)
 
 parser.add_argument('--batch_size',                type=int,   help='batch size', default=5)
-parser.add_argument('--num_epochs',                type=int,   help='number of epochs', default=30)
+parser.add_argument('--num_epochs',                type=int,   help='number of epochs', default=100)
 parser.add_argument('--sequence_size',             type=int,   help='size of sequence', default=5)
-parser.add_argument('--learning_rate',             type=float, help='initial learning rate', default=1e-4)
+parser.add_argument('--learning_rate',             type=float, help='initial learning rate', default=1e-5)
 
 parser.add_argument('--num_gpus',                  type=int,   help='number of GPUs to use for training', default=1)
 parser.add_argument('--num_threads',               type=int,   help='number of threads to use for data loading', default=8)
@@ -96,19 +96,19 @@ def train(params):
         dataloader = DeepslamDataloader(args.data_path, args.filenames_file, params, args.mode)
         dataset = dataloader.dataset
         iterator = dataset.make_initializable_iterator()
-        image, next_image, poses, next_poses, cam_params = iterator.get_next()
+        seq_index, image, next_image, cam_params = iterator.get_next()
+        
         init_op = iterator.initializer
+        
+        seq_index.set_shape( [params.batch_size,1])
         image.set_shape( [params.batch_size, params.height, params.width, 3])
-        next_image.set_shape( [params.batch_size,params.height, params.width, 3])
-        poses.set_shape( [params.batch_size,6]) 
-        next_poses.set_shape( [params.batch_size,6])   
+        next_image.set_shape( [params.batch_size,params.height, params.width, 3])   
         cam_params.set_shape( [params.batch_size,6])
 
         # split for each gpu
+        index_splits  = tf.split(seq_index,  args.num_gpus, 0)
         image_splits  = tf.split(image,  args.num_gpus, 0)
         next_image_splits = tf.split(next_image, args.num_gpus, 0)
-        poses_splits = tf.split(poses, args.num_gpus, 0)
-        next_poses_splits = tf.split(next_poses, args.num_gpus, 0)
         cam_params_splits = tf.split(cam_params, args.num_gpus, 0)
 
         tower_grads  = []
@@ -119,11 +119,11 @@ def train(params):
                 with tf.device('/gpu:%d' % i):
                     
                     if args.train_mode == 'mapping':
-                        model = MappingModel(params, args.mode, image_splits[i], next_image_splits[i], poses_splits[i], next_poses_splits[i], cam_params_splits[i], reuse_variables, i)
+                        model = MappingModel(params, args.mode, image_splits[i], next_image_splits[i], cam_params_splits[i], reuse_variables, i)
                     elif args.train_mode == 'localization':
-                        model = LocalizationModel(params, args.mode, image_splits[i], next_image_splits[i], poses_splits[i], next_poses_splits[i], cam_params_splits[i], reuse_variables, i)
+                        model = LocalizationModel(params, args.mode, image_splits[i], next_image_splits[i], cam_params_splits[i], reuse_variables, i)
                     elif args.train_mode == 'slam':
-                        model = DeepslamModel(params, args.mode, image_splits[i], next_image_splits[i], poses_splits[i], next_poses_splits[i], cam_params_splits[i], reuse_variables, i)
+                        model = DeepslamModel(params, args.mode, image_splits[i], next_image_splits[i], cam_params_splits[i], reuse_variables, i)
 
                     loss = model.total_loss
                     tower_losses.append(loss)
@@ -205,7 +205,6 @@ def train(params):
                 sess.run(init_op)
 
             model.modelnets.slam_model.reset_states()  
-
 
             if step % 100 == 0:
                 _, loss_value, summary_str, poses_txt = sess.run([apply_gradient_op, total_loss,summary_op,model.poses_txt])

@@ -359,52 +359,6 @@ class Models(object):
             self.pose_var_decoder_model = Model(input, fc3_unc)
 
 
-#    def build_slam_architecture(self):
-#        
-#        with tf.variable_scope('slam_model',reuse=self.reuse_variables):
-
-#            input1 = Input(batch_shape=[self.img_shape[0],self.img_shape[1]/128,self.img_shape[2]/128,512])
-
-#            input2 = Input(batch_shape=[self.img_shape[0],self.img_shape[1]/128,self.img_shape[2]/128,512])
-
-#            input3 = Input(batch_shape=[self.img_shape[0],self.img_shape[1]/128,self.img_shape[2]/128,512])
-
-#            conv1 = self.conv(input1, 16, 3, 1, activation='relu')
-
-#            conv2 = self.conv(input2, 16, 3, 1, activation='relu')
-
-#            conv3 = self.conv(input3, 16, 3, 1, activation='relu')
-#        
-#            input = concatenate([conv1, conv2, conv3], axis=3)
-
-
-#            # RNN
-#            dim = np.prod(input.shape[1:])
-
-#            flat = Lambda(lambda x: tf.reshape(x, [1, self.img_shape[0], dim]))(input)
-
-#            lstm_1 = LSTM(512, batch_input_shape = (1, self.img_shape[0], dim), stateful=True, return_sequences=True)(flat)
-
-#            lstm_2 = LSTM(int(dim), stateful=True, return_sequences=True)(lstm_1)
-#            
-#            # output generation
-#    
-#            unflat = Lambda(lambda x: tf.reshape(x, input.shape))(lstm_2)
-
-#            concat1 = concatenate([unflat,conv1],axis=3)
-
-#            concat2 = concatenate([unflat,conv2],axis=3)
-
-#            concat3 = concatenate([unflat,conv3],axis=3)
-
-#            output1 = self.conv(concat1, 512, 3, 1, activation='relu')
-
-#            output2 = self.conv(concat2, 512, 3, 1, activation='relu')
-
-#            output3 = self.conv(concat3, 512, 3, 1, activation='relu')
-
-#            self.slam_model = Model([input1,input2,input3], [output1,output2,output3])
-
     def build_slam_architecture(self):
         
         with tf.variable_scope('slam_model',reuse=self.reuse_variables):
@@ -415,46 +369,92 @@ class Models(object):
 
             input3 = Input(batch_shape=[self.img_shape[0],self.img_shape[1]/128,self.img_shape[2]/128,512])
 
-            conv1 = self.conv(input1, 16, 1, 1, activation='relu')
+            conv1 = self.conv(input1, 16, 3, 1, activation='relu')
 
-            conv2 = self.conv(input2, 16, 1, 1, activation='relu')
+            conv2 = self.conv(input2, 16, 3, 1, activation='relu')
 
-            conv3 = self.conv(input3, 16, 1, 1, activation='relu')
-
+            conv3 = self.conv(input3, 16, 3, 1, activation='relu')
+        
             input = concatenate([conv1, conv2, conv3], axis=3)
+
 
             # RNN
             dim = np.prod(input.shape[1:])
 
             flat = Lambda(lambda x: tf.reshape(x, [1, self.img_shape[0], dim]))(input)
 
-            lstm_1 = LSTM(1024, batch_input_shape = (1, self.img_shape[0], dim), stateful=True, return_sequences=True)(flat)
+            lstm_1 = LSTM(512, batch_input_shape = (1, self.img_shape[0], dim), stateful=True, return_sequences=True)(flat)
 
-            lstm_part1 = LSTM(128, stateful=True, return_sequences=True)(lstm_1)
-
-            lstm_part2 = LSTM(128, stateful=True, return_sequences=True)(lstm_1)
-
-            lstm_part3 = LSTM(128, stateful=True, return_sequences=True)(lstm_1)
+            lstm_2 = LSTM(int(dim), stateful=True, return_sequences=True)(lstm_1)
             
             # output generation
     
-            unflat1 = Lambda(lambda x: tf.reshape(x, [self.img_shape[0],2,4,16]))(lstm_part1)
+            unflat = Lambda(lambda x: tf.reshape(x, input.shape))(lstm_2)
 
-            unflat2 = Lambda(lambda x: tf.reshape(x, [self.img_shape[0],2,4,16]))(lstm_part2)
+            concat1 = concatenate([unflat,conv1],axis=3)
 
-            unflat3 = Lambda(lambda x: tf.reshape(x, [self.img_shape[0],2,4,16]))(lstm_part3)
+            concat2 = concatenate([unflat,conv2],axis=3)
 
-            concat1 = concatenate([unflat1,conv1],axis=3)
+            concat3 = concatenate([unflat,conv3],axis=3)
 
-            concat2 = concatenate([unflat2,conv2],axis=3)
+            output1 = self.conv(concat1, 512, 3, 1, activation='relu')
 
-            concat3 = concatenate([unflat3,conv3],axis=3)
+            output2 = self.conv(concat2, 512, 3, 1, activation='relu')
 
-            output1 = self.conv(concat1, 512, 1, 1, activation='relu')
-
-            output2 = self.conv(concat2, 512, 1, 1, activation='relu')
-
-            output3 = self.conv(concat3, 512, 1, 1, activation='relu')
+            output3 = self.conv(concat3, 512, 3, 1, activation='relu')
 
             self.slam_model = Model([input1,input2,input3], [output1,output2,output3])
+
+#    def build_slam_architecture(self):
+#        
+#        with tf.variable_scope('slam_model',reuse=self.reuse_variables):
+
+#            input1 = Input(batch_shape=[self.img_shape[0],self.img_shape[1]/128,self.img_shape[2]/128,512])
+
+#            input2 = Input(batch_shape=[self.img_shape[0],self.img_shape[1]/128,self.img_shape[2]/128,512])
+
+#            input3 = Input(batch_shape=[self.img_shape[0],self.img_shape[1]/128,self.img_shape[2]/128,512])
+
+#            conv1 = self.conv(input1, 16, 1, 1, activation='relu')
+
+#            conv2 = self.conv(input2, 16, 1, 1, activation='relu')
+
+#            conv3 = self.conv(input3, 16, 1, 1, activation='relu')
+
+#            input = concatenate([conv1, conv2, conv3], axis=3)
+
+#            # RNN
+#            dim = np.prod(input.shape[1:])
+
+#            flat = Lambda(lambda x: tf.reshape(x, [1, self.img_shape[0], dim]))(input)
+
+#            lstm_1 = LSTM(1024, batch_input_shape = (1, self.img_shape[0], dim), stateful=True, return_sequences=True)(flat)
+
+#            lstm_part1 = LSTM(128, stateful=True, return_sequences=True)(lstm_1)
+
+#            lstm_part2 = LSTM(128, stateful=True, return_sequences=True)(lstm_1)
+
+#            lstm_part3 = LSTM(128, stateful=True, return_sequences=True)(lstm_1)
+#            
+#            # output generation
+#    
+#            unflat1 = Lambda(lambda x: tf.reshape(x, [self.img_shape[0],2,4,16]))(lstm_part1)
+
+#            unflat2 = Lambda(lambda x: tf.reshape(x, [self.img_shape[0],2,4,16]))(lstm_part2)
+
+#            unflat3 = Lambda(lambda x: tf.reshape(x, [self.img_shape[0],2,4,16]))(lstm_part3)
+
+#            concat1 = concatenate([unflat1,conv1],axis=3)
+
+#            concat2 = concatenate([unflat2,conv2],axis=3)
+
+#            concat3 = concatenate([unflat3,conv3],axis=3)
+
+#            output1 = self.conv(concat1, 512, 1, 1, activation='relu')
+
+#            output2 = self.conv(concat2, 512, 1, 1, activation='relu')
+
+#            output3 = self.conv(concat3, 512, 1, 1, activation='relu')
+
+#            self.slam_model = Model([input1,input2,input3], [output1,output2,output3])
 

@@ -36,6 +36,7 @@ rot_odo = [];
 rot_est = [];
 tran_odo = [];
 tran_est = [];
+tran_error_ate = [];
 len = [];
 tran_gt = [];
 for iter=1:N
@@ -63,30 +64,72 @@ for iter=1:N
         len = [len,0];
     end
     prev_gt = tmp_gt;
+    
+    % for ATE
+    if iter+4<N
+        tmp_gt = gt_poses(((iter+3)-1)*3+1:(iter+3)*3,:);
+        tmp_gt = [tmp_gt;0,0,0,1];
+        tmp_est = est_poses(((iter+3)-1)*3+1:(iter+3)*3,:);
+        tmp_est = [tmp_est;0,0,0,1];        
+        init_error = pinv(tmp_gt)*tmp_est;
+        ate_errors = 0;
+        for iter2=0:1:4
+            cur_num = iter+iter2;
+            
+            tmp_gt = gt_poses((cur_num-1)*3+1:cur_num*3,:);
+            tmp_gt = [tmp_gt;0,0,0,1];
+
+            tmp_est = est_poses((cur_num-1)*3+1:cur_num*3,:);
+            tmp_est = [tmp_est;0,0,0,1];
+            tmp_est = tmp_est*pinv(init_error);
+            
+            error_est = pinv(tmp_gt)*tmp_est;
+            ate_errors = ate_errors + error_est(1:3,4)'*error_est(1:3,4);
+        end
+        tran_error_ate = [tran_error_ate;sqrt(ate_errors/5)];
+    end
 end
 
-%% plot results
-rot_error_est = zeros(8,1);
-tran_error_est = zeros(8,1);
+%% compute average error
+rot_error_percent = [];
+tran_error_percent = [];
+% tran_error_ate = [];
 lengths = [100.0,200.0,300.0,400.0,500.0,600.0,700.0,800.0];
 count = 1;
 for iter=1:N
-    if len(iter)>lengths(count)
-        rot_error_est(count) = rad2deg(real(acos((rot_est(iter,:)-1)/2)))/len(iter);
-        tran_error_est(count) = sqrt(tran_est(iter,:)*tran_est(iter,:)')/len(iter);
-        count = count+1;
+    if count<9
+        if len(iter)>lengths(count)
+            rot_error_percent = [rot_error_percent;rad2deg(real(acos((rot_est(iter,:)-1)/2)))/len(iter)];
+            tran_error_percent= [tran_error_percent;sqrt(tran_est(iter,:)*tran_est(iter,:)')/len(iter)];
+            count = count+1;
+        end
     end
-    if count>8
-        break;
-    end
+
+
 end
 
-hFig1 = figure(1);
-plot(lengths,rot_error_est,'Color',[0.7,0,0]); hold on;
-plot(lengths,tran_error_est,'Color',[0,0.7,0]); hold on;
+mean(tran_error_percent)*100
+mean(rot_error_percent)*100
+mean(tran_error_ate)
+%% plot results
 
-mean(tran_error_est)*100
-mean(rot_error_est)*100
+fig = figure;
+set(fig, 'Position', [0, 0, 650, 600]);
+gt_line = reshape(gt_poses(:,4),3,size(gt_poses,1)/3);
+plot(gt_line(1,:), gt_line(3,:), 'r','LineWidth',1); hold on;
+est_line = reshape(est_poses(:,4),3,size(est_poses,1)/3);
+plot(est_line(1,:), est_line(3,:), 'g','LineWidth',1); hold on;
 
-ylabel('rotational error (\circ)','FontSize',12);
+xlabel('x (m)','fontsize',12);
+ylabel('y (m)','fontsize',12);
+h = legend('GT','Propsed');
+set(h,'FontSize',15);
+set(h,'Location','northwest');
+% view([0 0]);
+axis equal;
+% grid on;
+axis tight;
+% axis([-300 300 -50 500]);
+
+% print(fig,'../figures/KITTI00','-dpdf');
 

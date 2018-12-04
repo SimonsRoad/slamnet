@@ -23,14 +23,12 @@ deepslam_parameters = namedtuple('parameters',
 class DeepslamModel(object):
     """deepslam model"""
 
-    def __init__(self, params, mode, img_cur, img_next, poses_cur, poses_next, cam_params, reuse_variables=None, model_index=0):
+    def __init__(self, params, mode, img_cur, img_next, cam_params, reuse_variables=None, model_index=0):
 
         self.params = params
         self.mode = mode
         self.img_cur = img_cur
         self.img_next = img_next
-        self.poses_cur = poses_cur
-        self.poses_next = poses_next
         self.model_collection = ['model_' + str(model_index)]
         self.reuse_variables = reuse_variables
         self.rnn_batch_size = int(params.batch_size/params.sequence_size)
@@ -239,7 +237,7 @@ class DeepslamModel(object):
             tf.summary.image('depth',  self.depthmap1[0],   max_outputs=3, collections=self.model_collection)
             tf.summary.image('img_est',  self.img_est[0][0],   max_outputs=3, collections=self.model_collection)
             tf.summary.image('img_n_est',  self.img_n_est[0][0],   max_outputs=3, collections=self.model_collection)
-
-            txtPredictions = tf.Print(tf.as_string(self.Q),[tf.as_string(self.Q)], message='predictions', name='txtPredictions')
-            tf.summary.text('predictions', txtPredictions, collections=self.model_collection)
+            tf.print(self.Q)
+#            txtPredictions = tf.Print(tf.as_string(self.Q),[tf.as_string(self.Q)], message='predictions', name='txtPredictions')
+#            tf.summary.text('predictions', txtPredictions, collections=self.model_collection)
 
