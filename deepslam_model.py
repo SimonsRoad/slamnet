@@ -37,14 +37,12 @@ class DeepslamModel(object):
 
         self.modelnets.build_depth_encoder()
         self.modelnets.build_depth_decoder()
-        self.modelnets.build_depth_variances_decoder()
         self.modelnets.build_pose_encoder()
         self.modelnets.build_pose_decoder()
-        self.modelnets.build_second_variances_decoder()
-        self.modelnets.build_slam_architecture()
         self.modelnets.build_pose_variances_decoder()
+        self.modelnets.build_slam_architecture()
 
-        self.depthmap1, self.depthmap2, self.tran_est, self.rot_est, self.unc, self.var1, self.var2, self.var3, self.var4, self.pose_unc = self.build_model(self.img_cur, self.img_next)
+        self.depthmap1, self.depthmap2, self.tran_est, self.rot_est, self.unc, self.var1, self.var2 = self.build_model(self.img_cur, self.img_next)
 
         if self.mode == 'test':
             return
@@ -109,17 +107,19 @@ class DeepslamModel(object):
 
             self.img_pyramid  = self.scale_pyramid(img1,  4)
             self.img_next_pyramid  = self.scale_pyramid(img2,  4)
+            img_base = tf.tile(self.img1[:1,:,:,:], [self.params.batch_size,1,1,1])
 
             # encoders
             [d1_conv1,d1_conv2,d1_conv3,d1_conv4,d1_conv5,d1_conv6,d1_conv7] = self.modelnets.depth_encoder_model(img1)
             [d2_conv1,d2_conv2,d2_conv3,d2_conv4,d2_conv5,d2_conv6,d2_conv7] = self.modelnets.depth_encoder_model(img2)            
-            p1_conv7 = self.modelnets.pose_encoder_model([img1,img2])
+            [p1_conv1,p1_conv2,p1_conv3,p1_conv4,p1_conv5,p1_conv6,p1_conv7] = self.modelnets.pose_encoder_model([img1,img2])
+            skips_pose2 = self.modelnets.pose_encoder_model([img_base,img2])
 
             # SLAM Nets
             [depth1_conv7, depth2_conv7, pose_conv7] = self.modelnets.slam_model([d1_conv7, d2_conv7, p1_conv7])
             skips_depth1 = [d1_conv1,d1_conv2,d1_conv3,d1_conv4,d1_conv5,d1_conv6,depth1_conv7]
             skips_depth2 = [d2_conv1,d2_conv2,d2_conv3,d2_conv4,d2_conv5,d2_conv6,depth2_conv7]
-            skips_pose = pose_conv7
+            skips_pose1   = [p1_conv1,p1_conv2,p1_conv3,p1_conv4,p1_conv5,p1_conv6,pose_conv7]
 
             # decoders
             disp1 = self.modelnets.depth_decoder_model(skips_depth1) 
@@ -127,23 +127,20 @@ class DeepslamModel(object):
             disp2 = self.modelnets.depth_decoder_model(skips_depth2) 
             [disp2[i].set_shape(disp2[i]._keras_shape) for i in range(4)]
 
-            var1 = self.modelnets.depth_var_decoder_model(skips_depth1) 
+            [trans, rot, unc] = self.modelnets.pose_decoder_model(pose_conv7)
+
+            var1 = self.modelnets.pose_var_decoder_model(skips_pose1)
             [var1[i].set_shape(var1[i]._keras_shape) for i in range(8)]
-            var2 = self.modelnets.depth_var_decoder_model(skips_depth2) 
+
+            var2 = self.modelnets.pose_var_decoder_model(skips_pose2)
             [var2[i].set_shape(var2[i]._keras_shape) for i in range(8)]
 
-            var3 = self.modelnets.second_var_decoder_model(skips_depth1) 
-            [var3[i].set_shape(var3[i]._keras_shape) for i in range(8)]
-            var4 = self.modelnets.second_var_decoder_model(skips_depth2) 
-            [var4[i].set_shape(var4[i]._keras_shape) for i in range(8)]
-
-            [trans, rot, unc] = self.modelnets.pose_decoder_model(skips_pose)
-
-            pose_unc = self.modelnets.pose_var_decoder_model(skips_pose)
-
-        return disp1, disp2, trans, rot, unc, var1, var2, var3, var4, pose_unc
+        return disp1, disp2, trans, rot, unc, var1, var2
 
     def build_outputs(self):
+
+        # SE3 pose propagation
+        
 
         # generate base images & depthmap
         self.img_base_pyramid = [tf.tile(self.img_pyramid[i][:1,:,:,:], [self.params.batch_size,1,1,1]) for i in range(4)]
@@ -212,12 +209,12 @@ class DeepslamModel(object):
     def build_losses(self):
         
         # PHOTOMETRIC REGISTRATION (temporal loss)
-        self.image_dists = [self.compute_temporal_loss(self.img_est[i], self.img_next_pyramid[i], self.var1[i]+self.var2[i], self.unc) for i in range(4)]
-        self.image_n_dists = [self.compute_temporal_loss(self.img_n_est[i], self.img_next_pyramid[i], self.var3[i]+self.var4[i], self.pose_unc) for i in range(4)]
+        self.image_dists = [self.compute_temporal_loss(self.img_est[i], self.img_next_pyramid[i], self.var1[i], self.unc) for i in range(4)]
+        self.image_n_dists = [self.compute_temporal_loss(self.img_n_est[i], self.img_next_pyramid[i], self.var2[i], self.pose_unc) for i in range(4)]
         self.image_loss  = tf.reduce_mean([tf.reduce_mean(self.image_dists[i] + self.image_n_dists[i]) for i in range(4)])
 
-        self.depth_dists = [self.compute_temporal_loss(self.depth_est[i], self.depthmap2[i], self.var1[4+i]+self.var2[4+i], self.unc) for i in range(4)]
-        self.depth_n_dists = [self.compute_temporal_loss(self.depth_n_est[i], self.depthmap2[i], self.var3[4+i]+self.var4[4+i], self.pose_unc) for i in range(4)]
+        self.depth_dists = [self.compute_temporal_loss(self.depth_est[i], self.depthmap2[i], self.var1[4+i], self.unc) for i in range(4)]
+        self.depth_n_dists = [self.compute_temporal_loss(self.depth_n_est[i], self.depthmap2[i], self.var2[4+i], self.pose_unc) for i in range(4)]
         self.depth_loss  = tf.reduce_mean([tf.reduce_mean(self.depth_dists[i] + self.depth_n_dists[i]) for i in range(4)])
 
         self.depth_smoothness_loss = tf.reduce_mean([tf.reduce_mean(self.depth1_smoothness[i] + self.depth2_smoothness[i]) for i in range(4)])
