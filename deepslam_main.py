@@ -74,7 +74,7 @@ def train(params):
 
         # OPTIMIZER
         num_training_samples, seq_nums = count_text_lines(args.filenames_file)
-        steps_per_epoch = num_training_samples     
+        steps_per_epoch = num_training_samples - 5 * 5     
 #        steps_per_epoch = np.ceil(num_training_samples / params.batch_size).astype(np.int32)
 
         num_total_steps = params.num_epochs * steps_per_epoch

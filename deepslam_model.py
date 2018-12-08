@@ -139,22 +139,31 @@ class DeepslamModel(object):
 
     def build_outputs(self):
 
-        # SE3 pose propagation
-        
 
         # generate base images & depthmap
         self.img_base_pyramid = [tf.tile(self.img_pyramid[i][:1,:,:,:], [self.params.batch_size,1,1,1]) for i in range(4)]
         self.depthmap_base_pyramid = [tf.tile(self.depthmap1[i][:1,:,:,:], [self.params.batch_size,1,1,1]) for i in range(4)]
 
-        # generate acc_rot & acc_tran
+        # make uncertainty matrix (Q)
+        L = tf.contrib.distributions.fill_triangular(self.unc)
+        Lt = tf.transpose(L,perm=[0, 2, 1])
+        self.Q = tf.matmul(L,Lt)
+
+        # generate acc_rot & acc_tran & uncertainty of pose_unc
         M_delta = compose_matrix(self.rot_est,self.tran_est)
         for i in range(self.params.batch_size):
             if i==0:
                 est = M_delta[0:1,:,:]
+                unc_est = self.Q[0:1,:,:]
                 M_est = est
+                self.pose_unc = unc_est
             else:
+                est_prev = est
+                unc_est_prev = unc_est
                 est = tf.matmul(est,M_delta[i:i+1,:,:])
+                unc_est = propagate_uncertainty(est_prev,M_delta[i:i+1,:,:],est,unc_est_prev,self.Q[i,:,:])
                 M_est = concatenate([M_est,est],axis=0)
+                self.pose_unc = concatenate([self.pose_unc,unc_est],axis=0)
         self.rot_acc,self.tran_acc = decompose_matrix(M_est)
 
         # generate k+1 th image
@@ -184,14 +193,14 @@ class DeepslamModel(object):
         # make uncertainty matrix (Q)
         L = tf.contrib.distributions.fill_triangular(pose_uncertainty)
         Lt = tf.transpose(L,perm=[0, 2, 1])
-        self.Q = tf.matmul(L,Lt)
+        Q = tf.matmul(L,Lt)
 
         # make residual uncertainty
         img_diffs = [tf.reshape(tf.abs(img_syn[i] - img),[_num_batch,-1]) for i in range(7)]
         res_diffs = [tf.abs(img_diffs[0]-img_diffs[i]) for i in range(7)]
 
         diffs_part = tf.stack([10.0*res_diffs[1],10.0*res_diffs[2],10.0*res_diffs[3],10.0*res_diffs[4],10.0*res_diffs[5],10.0*res_diffs[6]], axis=2)
-        tmp = tf.reduce_sum(tf.matmul(diffs_part,self.Q)*diffs_part,2)
+        tmp = tf.reduce_sum(tf.matmul(diffs_part,Q)*diffs_part,2)
         res_uncertainty = tf.reshape(tmp, [_num_batch,_height,_width,_num_channels])
 
         res_u_norm = res_uncertainty + data_uncertainty
