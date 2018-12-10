@@ -17,6 +17,12 @@ class DeepslamDataloader(object):
         self.dataset = None
 
         dataset = tf.data.TextLineDataset(filenames_file)
+
+#        dataset = dataset.apply(tf.contrib.data.sliding_window_batch(self.params.batch_size))
+        dataset = dataset.window(self.params.batch_size, 1, 1, True).flat_map(lambda x: x.batch(self.params.batch_size))
+        dataset = dataset.shuffle(buffer_size=30000, reshuffle_each_iteration=True)
+        dataset = dataset.apply(tf.data.experimental.unbatch())
+
         split_line = dataset.map(lambda string: tf.string_split([string]).values)
 
         # we load only one image for test, except if we trained a stereo model
@@ -27,11 +33,11 @@ class DeepslamDataloader(object):
             self.dataset = split_line.map(self.process_data)
 
         if mode == 'train':
-            self.dataset = self.dataset.apply(tf.contrib.data.sliding_window_batch(self.params.batch_size))
-            self.dataset = self.dataset.shuffle(buffer_size=100, reshuffle_each_iteration=True)
-
+#            self.dataset = self.dataset.apply(tf.contrib.data.sliding_window_batch(self.params.batch_size))
+#            self.dataset = self.dataset.shuffle(buffer_size=1000, reshuffle_each_iteration=True)
 #            self.dataset_img_cur = self.dataset.img_cur.window(self.params.batch_size, 1, 1, True).flat_map(lambda x: x.batch(self.params.batch_size))
 
+            self.dataset = self.dataset.batch(self.params.batch_size)
             self.dataset = self.dataset.filter(self.check_batch_indices)
             self.dataset = self.dataset.prefetch(1)
 
