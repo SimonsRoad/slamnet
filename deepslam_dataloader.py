@@ -28,7 +28,8 @@ class DeepslamDataloader(object):
 
         if mode == 'train':
             self.dataset = self.dataset.apply(tf.contrib.data.sliding_window_batch(self.params.batch_size))
-            self.dataset = self.dataset.shuffle(buffer_size=1000, reshuffle_each_iteration=True)
+            self.dataset = self.dataset.shuffle(buffer_size=100, reshuffle_each_iteration=True)
+
 #            self.dataset_img_cur = self.dataset.img_cur.window(self.params.batch_size, 1, 1, True).flat_map(lambda x: x.batch(self.params.batch_size))
 
             self.dataset = self.dataset.filter(self.check_batch_indices)

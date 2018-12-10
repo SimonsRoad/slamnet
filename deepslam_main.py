@@ -74,7 +74,7 @@ def train(params):
 
         # OPTIMIZER
         num_training_samples, seq_nums = count_text_lines(args.filenames_file)
-        steps_per_epoch = num_training_samples - 5 * 10     
+        steps_per_epoch = num_training_samples - 4 * 9     
 #        steps_per_epoch = np.ceil(num_training_samples / params.batch_size).astype(np.int32)
 
         num_total_steps = params.num_epochs * steps_per_epoch
@@ -218,7 +218,7 @@ def train(params):
                 training_time_left = (num_total_steps / step - 1.0) * time_sofar
                 print_string = 'batch {:>6} | examples/s: {:4.2f} | loss: {:.5f} | time elapsed: {:.2f}h | time left: {:.2f}h| image loss: {:.5f} | depth loss: {:.5f} | smoothness loss: {:.5f} '
                 print(print_string.format(step, examples_per_sec, loss_value, time_sofar, training_time_left, image_loss, depth_loss, smoothness_loss))
-            if step and (step+1) % (steps_per_epoch*5) == 0:
+            if step and (step+1) % (steps_per_epoch*10) == 0:
                 train_saver.save(sess, args.log_directory + '/' + args.model_name + '/model', global_step=step)
 
         train_saver.save(sess, args.log_directory + '/' + args.model_name + '/model', global_step=step)
