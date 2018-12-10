@@ -107,7 +107,7 @@ class DeepslamModel(object):
 
             self.img_pyramid  = self.scale_pyramid(img1,  4)
             self.img_next_pyramid  = self.scale_pyramid(img2,  4)
-            img_base = tf.tile(self.img1[:1,:,:,:], [self.params.batch_size,1,1,1])
+            img_base = tf.tile(img1[:1,:,:,:], [self.params.batch_size,1,1,1])
 
             # encoders
             [d1_conv1,d1_conv2,d1_conv3,d1_conv4,d1_conv5,d1_conv6,d1_conv7] = self.modelnets.depth_encoder_model(img1)
@@ -161,7 +161,7 @@ class DeepslamModel(object):
                 est_prev = est
                 unc_est_prev = unc_est
                 est = tf.matmul(est,M_delta[i:i+1,:,:])
-                unc_est = propagate_uncertainty(est_prev,M_delta[i:i+1,:,:],est,unc_est_prev,self.Q[i,:,:])
+                unc_est = propagate_uncertainty(est_prev,M_delta[i:i+1,:,:],est,unc_est_prev,self.Q[i:i+1,:,:])
                 M_est = concatenate([M_est,est],axis=0)
                 self.pose_unc = concatenate([self.pose_unc,unc_est],axis=0)
         self.rot_acc,self.tran_acc = decompose_matrix(M_est)
@@ -191,9 +191,12 @@ class DeepslamModel(object):
         _num_channels = img.shape[3]
 
         # make uncertainty matrix (Q)
-        L = tf.contrib.distributions.fill_triangular(pose_uncertainty)
-        Lt = tf.transpose(L,perm=[0, 2, 1])
-        Q = tf.matmul(L,Lt)
+        if pose_uncertainty.shape[1] == 21:
+            L = tf.contrib.distributions.fill_triangular(pose_uncertainty)
+            Lt = tf.transpose(L,perm=[0, 2, 1])
+            Q = tf.matmul(L,Lt)
+        else:
+            Q = pose_uncertainty
 
         # make residual uncertainty
         img_diffs = [tf.reshape(tf.abs(img_syn[i] - img),[_num_batch,-1]) for i in range(7)]
@@ -243,6 +246,8 @@ class DeepslamModel(object):
             tf.summary.image('depth',  self.depthmap1[0],   max_outputs=3, collections=self.model_collection)
             tf.summary.image('img_est',  self.img_est[0][0],   max_outputs=3, collections=self.model_collection)
             tf.summary.image('img_n_est',  self.img_n_est[0][0],   max_outputs=3, collections=self.model_collection)
+            tf.summary.image('image_variance',  self.var1[0],   max_outputs=3, collections=self.model_collection)
+            tf.summary.image('depth_variance',  self.var1[4],   max_outputs=3, collections=self.model_collection)
             tf.print(self.Q)
 #            txtPredictions = tf.Print(tf.as_string(self.Q),[tf.as_string(self.Q)], message='predictions', name='txtPredictions')
 #            tf.summary.text('predictions', txtPredictions, collections=self.model_collection)

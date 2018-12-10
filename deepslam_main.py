@@ -32,7 +32,7 @@ parser.add_argument('--input_height',              type=int,   help='input heigh
 parser.add_argument('--input_width',               type=int,   help='input width', default=512)
 
 parser.add_argument('--batch_size',                type=int,   help='batch size', default=5)
-parser.add_argument('--num_epochs',                type=int,   help='number of epochs', default=100)
+parser.add_argument('--num_epochs',                type=int,   help='number of epochs', default=60)
 parser.add_argument('--sequence_size',             type=int,   help='size of sequence', default=5)
 parser.add_argument('--learning_rate',             type=float, help='initial learning rate', default=1e-5)
 
@@ -74,7 +74,7 @@ def train(params):
 
         # OPTIMIZER
         num_training_samples, seq_nums = count_text_lines(args.filenames_file)
-        steps_per_epoch = num_training_samples - 5 * 5     
+        steps_per_epoch = num_training_samples - 5 * 10     
 #        steps_per_epoch = np.ceil(num_training_samples / params.batch_size).astype(np.int32)
 
         num_total_steps = params.num_epochs * steps_per_epoch
@@ -205,19 +205,19 @@ def train(params):
             model.modelnets.slam_model.reset_states()  
 
             if step % 100 == 0:
-                _, loss_value, summary_str, poses_txt = sess.run([apply_gradient_op, total_loss,summary_op,model.poses_txt])
+                _, loss_value, summary_str, poses_txt, image_loss, depth_loss, smoothness_loss = sess.run([apply_gradient_op, total_loss, summary_op, model.poses_txt, model.image_loss, model.depth_loss, model.depth_smoothness_loss])
                 summary_writer.add_summary(summary_str, global_step=step)
                 print(poses_txt)
             else:
                 _, loss_value = sess.run([apply_gradient_op, total_loss])
 
             duration = time.time() - before_op_time
-            if step % 100 == 0:
+            if step % 100 == 0 and step>1.0:
                 examples_per_sec = params.batch_size / duration
                 time_sofar = (time.time() - start_time) / 3600
                 training_time_left = (num_total_steps / step - 1.0) * time_sofar
-                print_string = 'batch {:>6} | examples/s: {:4.2f} | loss: {:.5f} | time elapsed: {:.2f}h | time left: {:.2f}h'
-                print(print_string.format(step, examples_per_sec, loss_value, time_sofar, training_time_left))
+                print_string = 'batch {:>6} | examples/s: {:4.2f} | loss: {:.5f} | time elapsed: {:.2f}h | time left: {:.2f}h| image loss: {:.5f} | depth loss: {:.5f} | smoothness loss: {:.5f} '
+                print(print_string.format(step, examples_per_sec, loss_value, time_sofar, training_time_left, image_loss, depth_loss, smoothness_loss))
             if step and (step+1) % (steps_per_epoch*5) == 0:
                 train_saver.save(sess, args.log_directory + '/' + args.model_name + '/model', global_step=step)
 
