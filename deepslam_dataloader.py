@@ -20,7 +20,7 @@ class DeepslamDataloader(object):
 
 #        dataset = dataset.apply(tf.contrib.data.sliding_window_batch(self.params.batch_size))
         dataset = dataset.window(self.params.batch_size, 1, 1, True).flat_map(lambda x: x.batch(self.params.batch_size))
-        dataset = dataset.shuffle(buffer_size=30000, reshuffle_each_iteration=True)
+        dataset = dataset.shuffle(buffer_size=40000, reshuffle_each_iteration=True)
         dataset = dataset.apply(tf.data.experimental.unbatch())
 
         split_line = dataset.map(lambda string: tf.string_split([string]).values)

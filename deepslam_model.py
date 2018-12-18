@@ -6,6 +6,7 @@ import numpy as np
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
 from keras.layers import Lambda
+from layers import depth_to_disparity, disparity_difference, expand_dims, spatial_transformation, disparity_to_depth
 
 from models import *
 from transformers import *
@@ -51,6 +52,7 @@ class DeepslamModel(object):
         self.focal_length2 = cam_params[:,0]*params.height/cam_params[:,4]
         self.c0 = cam_params[:,1]*params.width/cam_params[:,5]
         self.c1 = cam_params[:,2]*params.height/cam_params[:,4]
+        self.baseline = cam_params[:,3]
 
         self.build_outputs()
         self.build_losses()
@@ -139,10 +141,13 @@ class DeepslamModel(object):
 
     def build_outputs(self):
 
+        # generate disparity
+        self.disparity1 = [disparity_to_depth(self.depthmap1[i], self.baseline, self.focal_length1, self.params.width, 'depthmap_left') for i in range(4)]
+        self.disparity2 = [disparity_to_depth(self.depthmap2[i], self.baseline, self.focal_length1, self.params.width, 'depthmap_right') for i in range(4)]
 
         # generate base images & depthmap
         self.img_base_pyramid = [tf.tile(self.img_pyramid[i][:1,:,:,:], [self.params.batch_size,1,1,1]) for i in range(4)]
-        self.depthmap_base_pyramid = [tf.tile(self.depthmap1[i][:1,:,:,:], [self.params.batch_size,1,1,1]) for i in range(4)]
+        self.disparity_base_pyramid = [tf.tile(self.disparity1[i][:1,:,:,:], [self.params.batch_size,1,1,1]) for i in range(4)]
 
         # make uncertainty matrix (Q)
         L = tf.contrib.distributions.fill_triangular(self.unc)
@@ -173,14 +178,14 @@ class DeepslamModel(object):
         self.img_n_est = [projective_transformer(self.img_base_pyramid[i], self.focal_length1/ 2**i, self.focal_length2/ 2**i, self.c0/ 2**i, self.c1/ 2**i, self.depthmap2[i], self.rot_acc, self.tran_acc) for i in range(4)]
 
         # generate k+1 th depth image
-        self.depth_est = [projective_transformer(self.depthmap1[i], self.focal_length1/ 2**i, self.focal_length2/ 2**i, self.c0/ 2**i, self.c1/ 2**i, self.depthmap2[i], self.rot_est, self.tran_est) for i in range(4)]
+        self.depth_est = [projective_transformer(self.disparity1[i], self.focal_length1/ 2**i, self.focal_length2/ 2**i, self.c0/ 2**i, self.c1/ 2**i, self.depthmap2[i], self.rot_est, self.tran_est) for i in range(4)]
 
         # generate k+n th depth image
-        self.depth_n_est = [projective_transformer(self.depthmap_base_pyramid[i], self.focal_length1/ 2**i, self.focal_length2/ 2**i, self.c0/ 2**i, self.c1/ 2**i, self.depthmap2[i], self.rot_acc, self.tran_acc) for i in range(4)]
+        self.depth_n_est = [projective_transformer(self.disparity_base_pyramid[i], self.focal_length1/ 2**i, self.focal_length2/ 2**i, self.c0/ 2**i, self.c1/ 2**i, self.depthmap2[i], self.rot_acc, self.tran_acc) for i in range(4)]
 
         # DISPARITY SMOOTHNESS
-        self.depth1_smoothness  = self.get_disparity_smoothness(self.depthmap1,  self.img_pyramid)
-        self.depth2_smoothness  = self.get_disparity_smoothness(self.depthmap2,  self.img_next_pyramid)
+        self.depth1_smoothness  = self.get_disparity_smoothness(self.disparity1,  self.img_pyramid)
+        self.depth2_smoothness  = self.get_disparity_smoothness(self.disparity2,  self.img_next_pyramid)
 
 
     def compute_temporal_loss(self, img_syn, img, data_uncertainty, pose_uncertainty):
@@ -225,13 +230,13 @@ class DeepslamModel(object):
         self.image_n_dists = [self.compute_temporal_loss(self.img_n_est[i], self.img_next_pyramid[i], self.var2[i], self.pose_unc) for i in range(4)]
         self.image_loss  = tf.reduce_mean([tf.reduce_mean(self.image_dists[i] + self.image_n_dists[i]) for i in range(4)])
 
-        self.depth_dists = [self.compute_temporal_loss(self.depth_est[i], self.depthmap2[i], self.var1[4+i], self.unc) for i in range(4)]
-        self.depth_n_dists = [self.compute_temporal_loss(self.depth_n_est[i], self.depthmap2[i], self.var2[4+i], self.pose_unc) for i in range(4)]
+        self.depth_dists = [self.compute_temporal_loss(self.depth_est[i], self.disparity2[i], self.var1[4+i], self.unc) for i in range(4)]
+        self.depth_n_dists = [self.compute_temporal_loss(self.depth_n_est[i], self.disparity2[i], self.var2[4+i], self.pose_unc) for i in range(4)]
         self.depth_loss  = tf.reduce_mean([tf.reduce_mean(self.depth_dists[i] + self.depth_n_dists[i]) for i in range(4)])
 
         self.depth_smoothness_loss = tf.reduce_mean([tf.reduce_mean(self.depth1_smoothness[i] + self.depth2_smoothness[i]) for i in range(4)])
 
-        self.total_loss = tf.reduce_mean([tf.reduce_mean((self.image_dists[i] + self.image_n_dists[i]) + 0.01*(self.depth_dists[i] + self.depth_n_dists[i]) + 0.01*(self.depth1_smoothness[i] + self.depth2_smoothness[i])) for i in range(4)])
+        self.total_loss = tf.reduce_mean([tf.reduce_mean((self.image_dists[i] + self.image_n_dists[i]) + (self.depth_dists[i] + self.depth_n_dists[i]) + (self.depth1_smoothness[i] + self.depth2_smoothness[i])) for i in range(4)])
  
         self.poses_txt = concatenate([self.tran_est,self.rot_est],axis=0)
 
@@ -243,10 +248,11 @@ class DeepslamModel(object):
             tf.summary.scalar('depth_smoothness_loss', self.depth_smoothness_loss, collections=self.model_collection)
             tf.summary.image('img_cur',  self.img_cur,   max_outputs=3, collections=self.model_collection)
             tf.summary.image('img_next',  self.img_next,   max_outputs=3, collections=self.model_collection)
-            tf.summary.image('depth',  self.depthmap1[0],   max_outputs=3, collections=self.model_collection)
+            tf.summary.image('depth',  self.disparity1[0],   max_outputs=3, collections=self.model_collection)
             tf.summary.image('img_est',  self.img_est[0][0],   max_outputs=3, collections=self.model_collection)
             tf.summary.image('img_n_est',  self.img_n_est[0][0],   max_outputs=3, collections=self.model_collection)
             tf.summary.image('image_variance',  self.var1[0],   max_outputs=3, collections=self.model_collection)
+            tf.summary.image('image_variance2',  self.var2[0],   max_outputs=3, collections=self.model_collection)
             tf.summary.image('depth_variance',  self.var1[4],   max_outputs=3, collections=self.model_collection)
             tf.print(self.Q)
 #            txtPredictions = tf.Print(tf.as_string(self.Q),[tf.as_string(self.Q)], message='predictions', name='txtPredictions')

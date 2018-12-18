@@ -72,25 +72,49 @@ class Models(object):
         iconv1 = self.conv(concat1, channels, kernel_size, 1)
         return iconv1
 
+#    def build_depth_encoder(self):
+#        with tf.variable_scope('depth_encoder_model',reuse=self.reuse_variables):
+#            input = Input(batch_shape=self.img_shape)
+
+#            # encoder
+#            conv1 = self.conv_block(input, 32, 7)
+
+#            conv2 = self.conv_block(conv1, 64, 5)
+
+#            conv3 = self.conv_block(conv2, 128, 3)
+
+
+#            conv4 = self.conv_block(conv3, 256, 3)
+
+#            conv5 = self.conv_block(conv4, 512, 3)
+
+#            conv6 = self.conv_block(conv5, 512, 3)
+
+#            conv7 = self.conv_block(conv6, 512, 3)
+
+#            est  = [conv1, conv2, conv3, conv4, conv5, conv6, conv7]
+
+#            self.depth_encoder_model = Model(input, est)
+
     def build_depth_encoder(self):
         with tf.variable_scope('depth_encoder_model',reuse=self.reuse_variables):
             input = Input(batch_shape=self.img_shape)
 
             # encoder
-            conv1 = self.conv_block(input, 32, 7)
+            conv1 = self.conv(input, 32, 7, 2, activation='relu')
 
-            conv2 = self.conv_block(conv1, 64, 5)
+            conv2 = self.conv(conv1, 64, 5, 2, activation='relu')
 
-            conv3 = self.conv_block(conv2, 128, 3)
+            conv3 = self.conv(conv2, 128, 3, 2, activation='relu')
 
 
-            conv4 = self.conv_block(conv3, 256, 3)
+            conv4 = self.conv(conv3, 256, 3, 2, activation='relu')
 
-            conv5 = self.conv_block(conv4, 512, 3)
+            conv5 = self.conv(conv4, 512, 3, 2, activation='relu')
 
-            conv6 = self.conv_block(conv5, 512, 3)
+            conv6 = self.conv(conv5, 512, 3, 2, activation='relu')
 
-            conv7 = self.conv_block(conv6, 512, 3)
+            conv7 = self.conv(conv6, 512, 3, 2, activation='relu')
 
             est  = [conv1, conv2, conv3, conv4, conv5, conv6, conv7]
 
